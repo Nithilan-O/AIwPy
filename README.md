@@ -7,7 +7,8 @@ and shared game contracts so its choices can be explained state by state.
 
 The project provides an installable package, a title/help entry point, immutable
 domain types, a validated fixed scenario, and a deterministic simulator with a
-shared gameplay objective. Search algorithms, UI, and benchmarks are not implemented.
+shared gameplay objective. BFS is implemented; A* Search, Simple Hill Climbing,
+UI, and benchmarks remain planned.
 
 ## Fixed scenario
 
@@ -103,7 +104,7 @@ simulation duration, and future search/runtime metrics do not break objective ti
 `search_common.py` supplies one frozen `SearchResult` for the three named
 algorithms: best configuration and its simulation outcome, elapsed seconds,
 `states_explored`, peak traced bytes, typed termination reason, and optional trace.
-No search algorithm is implemented yet.
+BFS uses these contracts; the other two search algorithms remain planned.
 
 `ExpansionTracker.admit` counts each unique canonical state when it is removed
 for expansion, before inspecting goal or terminal status. Initial, goal, and
@@ -211,8 +212,41 @@ required to install or run the package.
 
 ### 1. BFS
 
-Planned: explain breadth-first exploration of tower-placement states using shared
-successor helpers, followed by a state-by-state teaching trace.
+`bfs.py` contains short named helpers (`_enqueue_successors`,
+`render_configuration`, `format_teaching_trace`) and the main iterative `bfs`
+function. It starts from the empty configuration, removes states from a FIFO
+`deque`, and uses `legal_actions` plus `apply_action` to discover successors.
+Canonical states enter a visited set on enqueue, so different placement orders
+do not cause duplicate expansions. The common expansion tracker counts each
+unique state on removal, including terminal states.
+
+Every expanded state is simulated as a stop-eligible configuration. BFS visits
+states by number of placements, not defense score; it continues after finding a
+good or perfect defense. The first encountered objective tie is retained without
+considering spending. Only frontier exhaustion or the configured state/time
+limit ends a run. The empty configuration is evaluated once as a fallback even
+with zero limits; it is traced only if admitted for expansion. All initialization,
+simulation, queue/set work, and trace collection are inside shared instrumentation;
+the result and teaching text are built afterwards. Finite candidate cells and
+tower count bound the search, but its frontier and visited set can consume
+substantial memory. A state-count limit is not a memory cap.
+
+For a short classroom demonstration on the unchanged default scenario, run from
+the repository directory:
+
+```powershell
+.venv\Scripts\python.exe -c "from tower_defense_optimizer.bfs import bfs, format_teaching_trace; from tower_defense_optimizer.config import DEFAULT_SCENARIO; from tower_defense_optimizer.search_common import SearchLimits; result = bfs(DEFAULT_SCENARIO, SearchLimits(max_expanded_states=4, max_trace_steps=4)); print(format_teaching_trace(result, DEFAULT_SCENARIO))"
+```
+
+The formatter prints `1. BFS`, an ordered spawn-to-base path, a grid legend, and
+`Stage 0`, `Stage 1`, ... in BFS expansion order. Stage 0 is the empty defense;
+later stages show individual expanded configurations with incoming action,
+depth, and objective outcome. They are neither a single parent-to-child solution
+path nor movement frames. Symbols are `S` spawn, `B` base, `#` path, `+` free
+build site, `.` other cell, `A` Arrow, `C` Cannon, and `N` Sniper. Traces keep the
+configured prefix and report omitted stages. Zero trace capacity or zero admitted
+states produces no stages. Measured runtime/memory are excluded from this text
+so repeatable gameplay traces remain easy to compare.
 
 ### 2. A* Algorithm
 
