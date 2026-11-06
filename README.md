@@ -38,6 +38,23 @@ placements canonically, so insertion order does not affect equality or hashing.
 `Scenario.validate_state()` checks build sites, total cost, and the tower limit;
 placement construction checks IDs and coordinates without assuming a scenario.
 
+## Placement contract
+
+`actions.py` defines frozen `PlacementAction(cell_id, tower_type_id)` values using
+the existing `(row, column)` coordinates and `TowerId` enum. `legal_actions(state,
+scenario)` is the sole placement-legality generator, returning a tuple ordered by
+row, column, then tower ID string. It enforces build sites, occupancy, known tower
+types, budget, and tower count. `apply_action` accepts only generated legal actions
+and returns a new canonical configuration without mutating its input. Invalid
+actions or source configurations raise `ValueError`.
+
+`can_stop` is true for every valid configuration, including the empty one and all
+intermediate depths. Stopping selects the current configuration as final; there
+is no stop action or self-loop. `is_terminal` means no further tower placement is
+legal, whether due to budget, tower count, or occupied sites. `budget_used` reports
+spending solely for legality and explanation, never performance scoring or
+tie-breaking. Action ordering does not depend on cost.
+
 ## Setup
 
 Requires Python 3.10 or newer. Run commands from this repository directory.
