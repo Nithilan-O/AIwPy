@@ -98,6 +98,60 @@ only when every enemy has been resolved.
 Escapes are reported and equal wave size minus defeats. Spending, event count,
 simulation duration, and future search/runtime metrics do not break objective ties.
 
+## Shared search bookkeeping
+
+`search_common.py` supplies one frozen `SearchResult` for the three named
+algorithms: best configuration and its simulation outcome, elapsed seconds,
+`states_explored`, peak traced bytes, typed termination reason, and optional trace.
+No search algorithm is implemented yet.
+
+`ExpansionTracker.admit` counts each unique canonical state when it is removed
+for expansion, before inspecting goal or terminal status. Initial, goal, and
+terminal states count; generated/evaluated-only states and duplicate removals do
+not. A `False` return means a duplicate. The cap is checked before admitting the
+next unique state, so the count never exceeds it. Exhausting the frontier or
+finding a goal on the last permitted expansion can still finish normally.
+
+`SearchEvaluator` calls the existing simulator and retains the first encountered
+configuration on objective ties. Only `(defeated, remaining_base_health)` selects
+the best; cost and instrumentation never break ties. It does not count expansions
+or cache outcomes. Future algorithms must evaluate the initial configuration as
+a fallback, then check limits before expansions and subsequent evaluations.
+
+`SearchLimits` defaults to 10,000 unique expansions, no time limit, and 100 trace
+steps. Zero expansions/time is supported. `check_time_limit` and the expansion
+tracker raise `SearchLimitReached` with `TIME_LIMIT` or `MAX_EXPANDED_STATES`;
+future algorithms must catch it and return the best-so-far result with that reason.
+At a check, elapsed time equal to the deadline is expired and takes precedence
+over the expansion cap. Time checks are cooperative: a simulator call or initial
+fallback evaluation can overrun the deadline. Normal reasons are exhausted search
+space, goal reached, or no improving neighbor; each algorithm must select the
+appropriate reason rather than claim success when a resource limit stops it.
+
+`TraceStep` stores configuration, incoming placement action (`None` initially),
+depth, compact objective outcome, and optional numeric `g/h/f`. These fields do
+not redefine the gameplay objective. `TraceBuffer` retains the first configured
+number of steps in order and counts dropped entries; zero disables recording.
+Use `SearchLimits.max_trace_steps` for both buffer capacity and
+`SearchResult.trace_limit`, and copy the dropped count into the result. Results
+reject traces exceeding their declared cap. Search traces omit simulator event
+logs; the best outcome retains its playback data.
+
+Use a fresh `RunInstrumentation` context around initialization/fallback evaluation,
+search work, simulation calls, and trace collection. Read final metrics and
+construct `SearchResult` after exiting; imports, scenario creation, and result
+formatting are outside the measurement. Elapsed time uses `perf_counter` wall
+time. Memory is the peak Python allocation count from a fresh `tracemalloc`
+session, including bookkeeping overhead; it is not process RSS or native memory.
+Tracing adds overhead and unrelated threads' allocations can affect the peak.
+
+Instrumentation owns and resets only its newly started tracer, then stops it on
+normal or exceptional exit. It rejects overlapping helper sessions and existing
+external tracing without resetting/stopping them. Do not start/stop/reset an
+external tracer during the context. Contexts are single-use; sequential runs each
+start fresh. Runtime and memory measurements are observational and may vary even
+when gameplay outcomes and traces are deterministic.
+
 ## Setup
 
 Requires Python 3.10 or newer. Run commands from this repository directory.
