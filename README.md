@@ -8,7 +8,8 @@ and shared game contracts so its choices can be explained state by state.
 The project provides an installable package, an argparse CLI, a small application
 service, immutable domain types, a validated fixed scenario, and a deterministic
 simulator with a shared gameplay objective. BFS, teaching A*, and Simple Hill
-Climbing are implemented. A graphical UI and benchmarks remain deferred.
+Climbing and repeatable benchmark reporting are implemented. A graphical UI and
+a large benchmark suite remain deferred.
 
 ## Fixed scenario
 
@@ -32,7 +33,7 @@ tick, 1-second spawn interval, and 60-second wave limit.
 
 These fixed values provide affordable short-range towers and more expensive
 alternatives with different ranges and firing rates. They are demonstration
-values; no balance tuning or performance benchmarking has been performed.
+values; benchmark reports describe these settings rather than establish game balance.
 
 `domain.py` uses frozen values and `TowerId` enums. Tower configurations sort
 placements canonically, so insertion order does not affect equality or hashing.
@@ -255,6 +256,98 @@ results = run_searches("all", DEFAULT_SCENARIO, limits)
 print(format_report(results, DEFAULT_SCENARIO, limits, trace=True))
 ```
 
+## Repeatable benchmarks
+
+Benchmark mode runs all three existing algorithms; it adds no search algorithm
+and does not change their semantics. A small bounded workflow from the repository:
+
+```sh
+PYTHONPATH=src python3 -m tower_defense_optimizer --benchmark --max-expanded-states 4 --repeats 2 --output benchmark.json
+python3 -m json.tool benchmark.json
+```
+
+The normal installed module/console entry point accepts the same flags. To
+compare a different shared budget/tower limit or apply a deadline:
+
+```sh
+PYTHONPATH=src python3 -m tower_defense_optimizer --benchmark --budget 300 --max-towers 2 --max-expanded-states 4 --time-limit 1 --repeats 2 --output benchmark-limited.json
+```
+
+Each repeat runs **BFS, A* Algorithm, Simple Hill Climbing**, in that fixed order,
+with no warmups. Every call receives the exact same immutable `Scenario` and
+`SearchLimits`, including map dimensions, ordered path, build sites, wave size,
+enemy health/speed/leak damage, timing, full tower definitions, initial base
+health, credits available, and tower count. All enemies use the homogeneous wave
+model from the shared simulator. Resource allowances reset per algorithm and per
+repeat. The fixed order is deterministic but may have order/cache effects;
+these small runs are demonstrations, not rigorous hardware comparisons.
+
+`--repeats` must be at least one and defaults to one. Benchmark mode always runs
+all three; `--algorithm all` is allowed, other algorithm selections are rejected.
+`--output FILE` writes JSON and is optional; terminal reporting is always shown.
+Both `--output` and `--repeats` require `--benchmark`. Traces are disabled equally
+(`max_trace_steps=0`), and `--trace` is rejected; `--trace-steps` has no effect in
+benchmark mode. Use normal CLI mode for classroom traces.
+
+The terminal report prints every run's tower configuration, defeated/escaped
+counts, remaining base health, elapsed seconds, explored states, peak traced
+Python bytes, termination reason, explicit `limit stopped` flag, and result scope.
+It then shows operational medians per algorithm. Gameplay outcomes are never
+averaged or combined across configurations. JSON summary groups preserve the
+configuration, its exact outcome, termination reason, and contributing run indices.
+There is no overall winner or ranking by coins spent.
+
+A resource-limited BFS/A* result is `best_evaluated_so_far`; a resource-limited
+hill-climbing result is `current_accepted_best_so_far`, which excludes a partially
+scanned neighborhood. Normal hill-climbing termination means a local optimum
+under one-placement moves, not a global optimum. Frontier exhaustion is labeled
+separately. Identical expansion budgets do not imply identical simulation counts:
+hill climbing evaluates neighbors that do not count as explored. Explored always
+means unique states admitted for expansion, including initial/terminal states.
+
+Measurements reuse the algorithms' unchanged `RunInstrumentation` boundaries:
+initialization, fallback simulation, search, simulations and bookkeeping are
+inside a fresh context per run; result construction, benchmark metadata, summaries,
+formatting and export are outside. `perf_counter` elapsed time and peak
+`tracemalloc` bytes are **hardware/runtime-sensitive**. Peak bytes cover traced
+Python allocations, not all process memory, native allocations or RSS. Previously
+allocated report/results retained between runs are outside the next fresh tracer.
+External tracing is rejected by the shared measurement contract. Cooperative time
+limits can overrun by one operation and can change configurations across repeats;
+equal deadlines do not promise equal progress or repeatable gameplay results.
+
+JSON schema version 1 contains:
+
+- `metadata`: Python version/implementation, platform/machine, UTC report creation
+  timestamp, fixed order, repeat count, measurement notes, and SHA256 hashes of
+  every package Python module plus their aggregate implementation identity.
+- `settings`: the complete scenario and limits, with `settings_sha256` identifying
+  the canonical settings. Build sites and tower definitions have stable ordering;
+  the path retains traversal order. Different search budgets produce different IDs.
+- `runs`: sequential run index, repeat/order, algorithm name/version (the aggregate
+  source hash, including shared game logic), shared settings ID, exact placements,
+  gameplay outcome, operational metrics, termination reason, limit flag and scope.
+- `summary`: operational medians and separate configuration/outcome groups for
+  each algorithm. Run indices refer to the original per-run records.
+
+The timestamp and operational observations intentionally vary; source/settings
+hashes and gameplay outcomes are repeatable for identical code/settings without
+binding time limits. The source hashes identify uncommitted code too. This is
+provenance for the current checkout, not a promise of cross-version performance.
+No sample timing or memory numbers are asserted in this workflow.
+
+Programmatic use accepts one shared configuration, not separate per-algorithm
+budgets:
+
+```python
+from tower_defense_optimizer.benchmark import run_benchmark, export_json, format_benchmark
+from tower_defense_optimizer.search_common import SearchLimits
+
+report = run_benchmark(limits=SearchLimits(4, None, 0), repeats=2)
+export_json(report, "benchmark.json")
+print(format_benchmark(report))
+```
+
 ## Test and development tooling
 
 The standard-library `unittest` runner is the test tool. The explicit discovery
@@ -271,8 +364,8 @@ not required for setup, execution, or tests.
 ## Phase status
 
 The shared game contracts, deterministic simulator, three search algorithms,
-bounded teaching traces, application service, and command-line integration are
-implemented and tested. The integration suite uses a tiny deterministic scenario
+bounded teaching traces, application service, command-line integration, and small
+repeatable benchmark reports are implemented and tested. The integration suite uses a tiny deterministic scenario
 to verify common results, legal recommendations, simulator consistency, outcome
 accounting, repeatability, equivalent limits, and CLI output/errors. A graphical
 UI and a large benchmark suite are outside this phase.

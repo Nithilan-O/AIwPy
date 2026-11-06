@@ -6,6 +6,7 @@ from math import isfinite
 from typing import Sequence
 
 from .application import ALGORITHM_CHOICES, format_report, run_searches
+from .benchmark import export_json, format_benchmark, run_benchmark
 from .config import DEFAULT_SCENARIO
 from .search_common import SearchLimits
 
@@ -49,6 +50,12 @@ def build_parser() -> argparse.ArgumentParser:
                         help="override scenario credits for every algorithm")
     parser.add_argument("--max-towers", type=_nonnegative_int,
                         help="override scenario tower limit (must be at least 1)")
+    parser.add_argument("--benchmark", action="store_true",
+                        help="benchmark all three in fixed order with identical settings")
+    parser.add_argument("--repeats", type=_nonnegative_int,
+                        help="benchmark repetitions, at least 1 (default: 1)")
+    parser.add_argument("--output", metavar="FILE.json",
+                        help="write benchmark JSON, including all settings and per-run values")
     return parser
 
 
@@ -56,7 +63,14 @@ def main(argv: Sequence[str] | None = None) -> int:
     """Parse options, run the service, and render outside measured search work."""
     parser = build_parser()
     args = parser.parse_args(argv)
-    if args.algorithm is None:
+    if args.benchmark:
+        if args.algorithm not in (None, "all"):
+            parser.error("--benchmark always runs all three; omit --algorithm or use all")
+        if args.trace:
+            parser.error("--benchmark disables traces equally; omit --trace")
+    elif args.repeats is not None or args.output is not None:
+        parser.error("--repeats and --output require --benchmark")
+    if args.algorithm is None and not args.benchmark:
         parser.print_help()
         return 0
     overrides = {name: getattr(args, name) for name in ("budget", "max_towers")
@@ -65,7 +79,19 @@ def main(argv: Sequence[str] | None = None) -> int:
         scenario = replace(DEFAULT_SCENARIO, **overrides)
         limits = SearchLimits(args.max_expanded_states, args.time_limit,
                               args.trace_steps if args.trace else 0)
+        if args.benchmark:
+            report = run_benchmark(scenario, limits,
+                                   repeats=1 if args.repeats is None else args.repeats)
+            if args.output is not None:
+                export_json(report, args.output)
+            print(format_benchmark(report))
+            if args.output is not None:
+                print(f"JSON exported to: {args.output}")
+            return 0
         results = run_searches(args.algorithm, scenario, limits)
+    except OSError as error:
+        parser.error(f"could not access benchmark source/export files: {error}. "
+                     "Choose a writable --output file in an existing directory.")
     except (ValueError, RuntimeError) as error:
         parser.error(f"{error}. Check scenario/limit settings; stop external memory tracing "
                      "if a measurement session is already active.")
