@@ -7,8 +7,8 @@ and shared game contracts so its choices can be explained state by state.
 
 The project provides an installable package, a title/help entry point, immutable
 domain types, a validated fixed scenario, and a deterministic simulator with a
-shared gameplay objective. BFS is implemented; A* Search, Simple Hill Climbing,
-UI, and benchmarks remain planned.
+shared gameplay objective. BFS and teaching A* are implemented; Simple Hill
+Climbing, UI, and benchmarks remain planned.
 
 ## Fixed scenario
 
@@ -104,7 +104,7 @@ simulation duration, and future search/runtime metrics do not break objective ti
 `search_common.py` supplies one frozen `SearchResult` for the three named
 algorithms: best configuration and its simulation outcome, elapsed seconds,
 `states_explored`, peak traced bytes, typed termination reason, and optional trace.
-BFS uses these contracts; the other two search algorithms remain planned.
+BFS and A* use these contracts; Simple Hill Climbing remains planned.
 
 `ExpansionTracker.admit` counts each unique canonical state when it is removed
 for expansion, before inspecting goal or terminal status. Initial, goal, and
@@ -250,8 +250,52 @@ so repeatable gameplay traces remain easy to compare.
 
 ### 2. A* Algorithm
 
-Planned: explain A* Search with explicit cost and heuristic helpers once their
-game contracts are defined, followed by a state-by-state teaching trace.
+`astar.py` provides short helpers `g_cost`, `heuristic`, `is_target_depth`, a heap
+frontier helper, and the main `astar` function. This is a **teaching A* traversal
+on placement depth** over the same configuration graph as BFS:
+
+- `g` counts placements already made: every placement costs one search step.
+- The fixed target depth is `scenario.max_towers`. `h = max(0, target_depth - g)`
+  counts placements still needed. When a legal completion exists, this is the
+  exact minimum additional number of steps to reach that depth.
+- `f = g + h` is the min-priority traversal key. It does not measure defense quality.
+
+A fixed-depth goal is a valid configuration containing exactly `max_towers`
+towers. Insufficient remaining sites or credits may make the goal unreachable;
+the finite depth gap is then only a lower bound, not a promise of completion.
+Those shallow dead ends remain eligible for gameplay evaluation. No reachability
+pruning removes them. In this graph every legal state has `f = target_depth`, so
+the stable insertion sequence produces the same expansion order as BFS. This is
+an intentionally simple illustration of the `g+h` pattern, not a defense heuristic.
+
+The frontier is a min-heap retaining multiple equal-priority entries with unique
+sequence numbers, not a dictionary keyed by `f`. Best-known `g` is stored by
+canonical configuration; equal/worse rediscoveries are ignored, and stale popped
+entries are skipped before evaluation/counting/tracing. Strict improvements are
+supported by the bookkeeping, although all real routes to a configuration here
+have identical unit cost. Unlike the teaching PDF's frontier, equal `f` does not
+overwrite states, and the frontier is retained across expansions.
+
+Every unique non-stale popped state is evaluated, including the empty defense,
+stop-eligible shallow states, unreachable-depth dead ends, and target-depth goals.
+The search continues after a depth goal or perfect defense until exhaustion or a
+resource limit. The recommendation uses only the shared
+`(enemies_defeated, base_health_remaining)` objective, preserving the first tie.
+With limits it is best among evaluated configurations only: do not interpret the
+first depth goal, smallest `f`, or returned limited result as the best defense or
+an optimal gameplay configuration. Shared fallback, counting, cooperative time
+checks, bounded traces, and instrumentation boundaries are unchanged.
+
+```powershell
+.venv\Scripts\python.exe -c "from tower_defense_optimizer.astar import astar, format_teaching_trace; from tower_defense_optimizer.config import DEFAULT_SCENARIO; from tower_defense_optimizer.search_common import SearchLimits; result = astar(DEFAULT_SCENARIO, SearchLimits(max_expanded_states=4, max_trace_steps=4)); print(format_teaching_trace(result, DEFAULT_SCENARIO))"
+```
+
+The teaching formatter uses `2. A* Algorithm`, then `Stage 0`, `Stage 1`, ... in
+expansion order. Each stage shows the fixed path/grid, tower symbols from the BFS
+legend, incoming action, objective outcome, `g`, `h`, `f`, and whether it is a
+target-depth goal. Stage 0 is the initial empty configuration if admitted. Trace
+limits and zero-budget resource allowances behave as documented for BFS; the
+formatter reports missing/truncated stages rather than inventing expansions.
 
 ### 3. Simple Hill Climbing
 
