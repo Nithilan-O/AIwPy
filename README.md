@@ -5,11 +5,38 @@ and Simple Hill Climbing choosing tower types and placements on a grid for one
 deterministic tower-defense wave. Each algorithm will use the same fixed scenario
 and shared game contracts so its choices can be explained state by state.
 
-This phase provides only an installable package, a title/help entry point, and one
-smoke test. Game rules, search algorithms, UI, and benchmarks are not implemented.
-The supplied request does not specify concrete grid dimensions, tower statistics,
-wave data, costs, heuristics, or shared contract signatures; those details must be
-defined before the corresponding implementation phase.
+The project provides an installable package, a title/help entry point, immutable
+domain types, and a validated fixed scenario. Simulation, search algorithms, UI,
+and benchmarks are not implemented.
+
+## Fixed scenario
+
+`config.py` is the single source of truth for `DEFAULT_SCENARIO`. Coordinates are
+zero-based `(row, column)` pairs on a 10x10 grid. The ordered 15-cell path runs
+from spawn `(2, 0)` across row 2 through `(2, 7)`, down column 7 to `(7, 7)`,
+then across row 7 to the base at `(7, 9)`. Eight buildable cells sit off the path:
+`(1, 2)`, `(1, 6)`, `(3, 4)`, `(4, 6)`, `(4, 8)`, `(6, 6)`, `(6, 8)`, `(8, 9)`.
+The limited sites near straights and bends offer different coverage choices.
+
+One wave contains 20 enemies, each with 100 health and speed 1 path cell/second.
+The base starts with 10 health; each enemy reaching it deals 1 damage. The build
+budget is 500 credits with at most 4 towers. Timing defaults are a 0.1-second
+tick, 1-second spawn interval, and 60-second wave limit.
+
+| Tower ID | Name | Cost (credits) | Range (cells) | Damage | Cooldown (seconds) |
+| --- | --- | --- | --- | --- | --- |
+| `arrow` | Arrow | 100 | 2.5 | 12 | 0.5 |
+| `cannon` | Cannon | 175 | 2.0 | 30 | 1.5 |
+| `sniper` | Sniper | 225 | 4.0 | 45 | 2.0 |
+
+These fixed values provide affordable short-range towers and more expensive
+alternatives with different ranges and firing rates. Balance remains unverified
+until simulation exists; targeting and combat mechanics are deferred.
+
+`domain.py` uses frozen values and `TowerId` enums. Tower configurations sort
+placements canonically, so insertion order does not affect equality or hashing.
+`Scenario.validate_state()` checks build sites, total cost, and the tower limit;
+placement construction checks IDs and coordinates without assuming a scenario.
 
 ## Setup
 
