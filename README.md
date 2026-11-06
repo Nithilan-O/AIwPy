@@ -7,8 +7,8 @@ and shared game contracts so its choices can be explained state by state.
 
 The project provides an installable package, a title/help entry point, immutable
 domain types, a validated fixed scenario, and a deterministic simulator with a
-shared gameplay objective. BFS and teaching A* are implemented; Simple Hill
-Climbing, UI, and benchmarks remain planned.
+shared gameplay objective. BFS, teaching A*, and Simple Hill Climbing are implemented; UI and benchmarks
+remain planned.
 
 ## Fixed scenario
 
@@ -104,7 +104,7 @@ simulation duration, and future search/runtime metrics do not break objective ti
 `search_common.py` supplies one frozen `SearchResult` for the three named
 algorithms: best configuration and its simulation outcome, elapsed seconds,
 `states_explored`, peak traced bytes, typed termination reason, and optional trace.
-BFS and A* use these contracts; Simple Hill Climbing remains planned.
+All three algorithms use these contracts.
 
 `ExpansionTracker.admit` counts each unique canonical state when it is removed
 for expansion, before inspecting goal or terminal status. Initial, goal, and
@@ -299,19 +299,44 @@ formatter reports missing/truncated stages rather than inventing expansions.
 
 ### 3. Simple Hill Climbing
 
-Planned: explain Simple Hill Climbing with small neighbor and evaluation helpers
-once improvement and stopping rules are defined, followed by a teaching trace.
+`hill_climbing.py` organizes the explanation into `_tie_key`, `_prefer`,
+`format_teaching_trace`, and the main iterative `hill_climbing` function.
+The deterministic initial configuration is empty. Each iteration generates all
+legal one-placement neighbors through `legal_actions`, constructs them with
+`apply_action`, and evaluates them through the shared simulator/evaluator.
+It selects the maximum shared `(defeated, remaining_base_health)` objective;
+objective ties choose the smallest canonical placement tuple (cell, tower ID),
+then action (cell, tower ID), independent of generation order and spending.
+Only strict gameplay improvement permits a move. Equal and worse neighbors are
+rejected. There are no sideways moves, restarts, removals, or recursive calls.
 
-For each algorithm, future traces will use this presentation pattern (a format
-template, not generated gameplay):
+No improving neighbor (including no legal actions) returns `LOCAL_OPTIMUM`:
+this is a local optimum under one-placement moves, not a global optimum.
+Resource limits return the current accepted state with their explicit reason.
+A partial neighborhood scan never authorizes a move, even if an evaluated
+neighbor improved the objective. The empty fallback is simulated even with zero
+limits. Time checks are cooperative before/after neighborhood work and before
+each simulation; a single simulation can overrun the deadline.
 
-```text
-Stage 0
-<initial grid rows and tower placements>
+Explored uses `ExpansionTracker`: count unique current states admitted for
+expansion, including initial and terminal states, but exclude evaluated-only
+neighbors. An accepted move awaiting admission is returned if the next admission
+hits the expansion cap; it is not counted as explored. Reaching a local optimum
+on the last allowed expansion still terminates normally. Initialization,
+simulations, comparisons, counting, and trace collection are measured inside
+`RunInstrumentation`; result construction and formatting are outside, as for BFS/A*.
 
-Stage 1
-<next grid rows and tower placements>
+`HillClimbingStep` extends the shared `TraceStep` contract with a compact best
+neighbor configuration/action/objective, evaluated neighbor count, scan-complete
+flag, and decision. No per-neighbor list or simulator logs are retained.
+`SearchResult` and BFS/A* contracts and behavior remain unchanged.
+`Stage 0` is the admitted empty state; each subsequent stage is an accepted move,
+including one awaiting admission when a limit stops search. Each stage shows the
+current grid/outcome, best evaluated neighbor grid/outcome, and acceptance or stop
+reason. An interrupted scan is marked incomplete. Zero initial allowance yields
+no stages. Trace capacity retains only the configured prefix and counts omitted
+accepted-state stages; disabling/truncating the trace does not affect search.
 
-Stage 2
-<next grid rows and tower placements>
+```powershell
+.venv\Scripts\python.exe -c "from tower_defense_optimizer.hill_climbing import hill_climbing, format_teaching_trace; from tower_defense_optimizer.config import DEFAULT_SCENARIO; print(format_teaching_trace(hill_climbing(), DEFAULT_SCENARIO))"
 ```
