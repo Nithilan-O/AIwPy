@@ -8,8 +8,8 @@ and shared game contracts so its choices can be explained state by state.
 The project provides an installable package, an argparse CLI, a small application
 service, immutable domain types, a validated fixed scenario, and a deterministic
 simulator with a shared gameplay objective. BFS, teaching A*, and Simple Hill
-Climbing and repeatable benchmark reporting are implemented. A graphical UI and
-a large benchmark suite remain deferred.
+Climbing, repeatable benchmark reporting, and an optional Tk desktop interface
+are implemented. A large benchmark suite remains deferred.
 
 ## Fixed scenario
 
@@ -159,6 +159,8 @@ when gameplay outcomes and traces are deterministic.
 Requires Python 3.10 or newer. Run commands from this repository directory.
 There are no runtime or test dependencies outside the Python standard library.
 Setuptools is the packaging build dependency declared in `pyproject.toml`.
+The optional desktop UI additionally needs a working Tcl/Tk installation and a
+graphical desktop; the CLI and headless tests do not import Tk.
 
 ```powershell
 python -m venv .venv
@@ -236,6 +238,128 @@ Explored states: 4
 Peak memory: 3000000 bytes (traced Python allocations)
 Termination: no_improving_neighbor
 ```
+
+## Optional desktop interface
+
+The UI uses Python's lightweight Tkinter/ttk toolkit, with no additional pip
+runtime dependency. It displays the unchanged fixed 10x10 map, ordered path,
+one wave of 20 identical enemies, and recommended tower placements. This is a
+search/results viewer, not an interactive gameplay mode.
+
+First verify Tk for the **same Python interpreter** you will use to launch:
+
+```sh
+python3 -m tkinter
+```
+
+A small Tk demonstration window should open; close it before launching the app.
+See the [official Tkinter setup documentation](https://docs.python.org/3/library/tkinter.html).
+On macOS/Windows, use a Python distribution with Tcl/Tk support (the official
+python.org installers include it; enable Tcl/Tk when the installer offers that
+option). On Linux, install your distribution's Tk package for your Python, for
+example `sudo apt install python3-tk` on Debian/Ubuntu. Custom Python builds may
+need Tcl/Tk enabled when building Python. Tk is not installed via `pip install
+tkinter`. Recreate a virtual environment with the Tk-enabled interpreter if needed.
+
+From the repository on macOS/Linux:
+
+```sh
+PYTHONPATH=src python3 -m tower_defense_optimizer.gui
+```
+
+After editable installation, use the dedicated command:
+
+```sh
+tower-defense-optimizer-ui
+```
+
+Or launch with the installed environment's interpreter on Windows:
+
+```powershell
+.venv\Scripts\python.exe -m tower_defense_optimizer.gui
+```
+
+If Tk is missing or no graphical desktop is available, use the CLI unchanged:
+
+```sh
+PYTHONPATH=src python3 -m tower_defense_optimizer --algorithm all --max-expanded-states 4
+```
+
+The launcher reports normal missing-Tk/display errors with that fallback.
+Some native Tk builds can abort before Python can handle a missing desktop;
+use CLI mode on headless hosts or restricted macOS runners.
+
+Choose BFS, A* Algorithm, Simple Hill Climbing, or **Compare all three**. The
+controls set identical per-algorithm limits on the single fixed scenario. Defaults
+are 32 explored states, 3 seconds per algorithm, and 5 trace stages. Zero state/time
+allowances are supported; blank time means no deadline. GUI traces are capped at
+20 stages; zero disables retention. Trace visibility can be toggled after a run
+without running another search. Default caps make this a short demonstration,
+not a promise of an optimal defense.
+
+The comparison table shows exactly six measures: enemies defeated, enemies
+escaped, base health left, execution time in seconds, explored states, and peak
+traced Python memory in KiB (1024 bytes). Spending is never a performance measure.
+Select a result row to see its tower types/cells, termination reason, full
+explanation, and matching grid. A horizontal scrollbar preserves table labels on
+narrow windows; the split between map and details can be dragged. Resizing scales
+the grid and wraps the explanatory text. Colored cells also carry distinct symbols,
+and the grid includes row/column labels and a legend.
+
+**Show short teaching trace** expands the selected result's existing classroom
+formatter: `1. BFS`, `2. A* Algorithm`, or `3. Simple Hill Climbing`, with consecutive
+`Stage 0`, `Stage 1`, ... grids and A* g/h/f where relevant. In compare mode, rows
+retain that order. BFS/A* traces show expansion order; hill climbing shows its
+accepted path and best-neighbor comparisons. Truncation and disabled/zero-limit
+traces are reported explicitly. These are configurations, not wave animation.
+
+`ui_model.py` handles Tk-independent validation, grid tiles, six-measure formatting,
+and original result/trace presentation. `gui.py` only dispatches `run_searches`
+from a single background worker and displays its `SearchResult` values. Tk widgets
+are accessed exclusively on the main thread through queue polling. Controls are
+disabled during a run so measurement sessions cannot overlap; earlier completed
+results stay visible until new results arrive. Closing the window exits the UI;
+it does not save partial search work. No simulator or search logic lives in the
+callbacks. The common lexicographic objective, legality rules, fallback, counting,
+measurement boundaries, and resource-limit meanings remain unchanged.
+
+UI activity can contribute Python allocations during the shared process-wide
+tracemalloc session, and polling/resizing can affect elapsed time. UI measurements
+are observations, not a controlled benchmark; use CLI `--benchmark` for repeatable
+measurement runs. Peak memory is Python allocations, not all process memory/RSS.
+Time checks remain cooperative. A limited recommendation is best-so-far, while
+hill climbing can stop at a local optimum; it does not claim global optimality.
+
+### Desktop smoke and manual checklist
+
+The normal automated suite is headless. With Tk and a graphical desktop, also run:
+
+```sh
+PYTHONPATH=src python3 tests/gui_smoke.py
+```
+
+This opens and closes a real window automatically, runs compare-all with four
+expansions and two retained trace stages, and checks worker completion, metrics,
+row selection, grid tiles, trace expansion/collapse, A* scores, resizing, validation,
+and shutdown. Restricted macOS environments may need desktop access for this
+command; a sandbox abort during native application registration is not a Python
+assertion failure.
+
+For manual verification:
+
+1. Launch the UI; check the empty 10x10 grid, spawn/base, path and build-site legend.
+2. Run each single algorithm, then compare all three with the same limits. While
+   running, resize the window and confirm it stays responsive and Run is disabled.
+3. Select each comparison row. Confirm the six measures, tower names/cells, matching
+   grid, algorithm explanation, and termination reason are readable.
+4. Expand the teaching trace. Check numbered headings, Stage labels, grid rows,
+   A* g/h/f, and the hill-climbing acceptance/stop explanation. Collapse it again.
+5. Try four expansions and two trace stages, then zero expansions/time or trace
+   stages. Confirm best-so-far/limit labels and no invented trace stages.
+6. Enter a negative state limit, `nan` time, or 21 trace stages; confirm an actionable
+   error and that a corrected input can run. Close and reopen the window.
+7. On a Python without Tk, confirm the GUI explains the requirement and the CLI
+   command above still works.
 
 ## Application service
 
@@ -364,11 +488,12 @@ not required for setup, execution, or tests.
 ## Phase status
 
 The shared game contracts, deterministic simulator, three search algorithms,
-bounded teaching traces, application service, command-line integration, and small
-repeatable benchmark reports are implemented and tested. The integration suite uses a tiny deterministic scenario
+bounded teaching traces, application service, command-line integration, small
+repeatable benchmark reports, and an optional desktop UI are implemented and tested. The integration suite uses a tiny deterministic scenario
 to verify common results, legal recommendations, simulator consistency, outcome
-accounting, repeatability, equivalent limits, and CLI output/errors. A graphical
-UI and a large benchmark suite are outside this phase.
+accounting, repeatability, equivalent limits, CLI output/errors, and UI-independent
+presentation. Desktop startup checks are separate from headless tests. A large
+benchmark suite remains outside this phase.
 
 ## Teaching format
 

@@ -12,6 +12,7 @@ dependencies = []
 
 [project.scripts]
 tower-defense-optimizer = "tower_defense_optimizer.__main__:main"
+tower-defense-optimizer-ui = "tower_defense_optimizer.gui:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]

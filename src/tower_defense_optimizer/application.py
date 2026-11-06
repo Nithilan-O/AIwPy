@@ -53,9 +53,16 @@ def run_searches(
     return tuple(search(scenario, limits) for _, _, search, _ in selected)
 
 
+def format_trace(result: SearchResult, scenario: Scenario) -> str:
+    """Public adapter for the existing algorithm-specific teaching formatters."""
+    formatter = next(spec[3] for spec in _ALGORITHMS.values()
+                     if spec[0] is result.algorithm)
+    return formatter(result, scenario)
+
+
 def _format_result(result: SearchResult, scenario: Scenario, trace: bool) -> str:
     """Present the original simulator outcome and measurements without ranking."""
-    _, heading, _, formatter = next(
+    _, heading, _, _ = next(
         spec for spec in _ALGORITHMS.values() if spec[0] is result.algorithm
     )
     lines = [heading, _BEHAVIOR[result.algorithm], "Recommended towers (row, column):"]
@@ -75,7 +82,7 @@ def _format_result(result: SearchResult, scenario: Scenario, trace: bool) -> str
     ])
     if trace:
         # Existing formatters supply the numbered heading already shown above.
-        lines.extend(["Teaching trace:", formatter(result, scenario).partition("\n")[2]])
+        lines.extend(["Teaching trace:", format_trace(result, scenario).partition("\n")[2]])
     return "\n".join(lines)
 
 
