@@ -6,7 +6,7 @@ import tracemalloc
 import unittest
 from unittest.mock import patch
 
-from tower_defense_optimizer.actions import PlacementAction, apply_action, legal_actions
+from tower_defense_optimizer.actions import apply_action, legal_actions
 from tower_defense_optimizer.bfs import bfs, format_teaching_trace, render_configuration
 from tower_defense_optimizer.config import DEFAULT_SCENARIO
 from tower_defense_optimizer.domain import Placement, TowerConfiguration, TowerId

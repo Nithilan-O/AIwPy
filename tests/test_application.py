@@ -52,8 +52,8 @@ class ApplicationTests(unittest.TestCase):
                 from tower_defense_optimizer import application
                 spec = application._ALGORITHMS[name]
                 with patch.dict(application._ALGORITHMS,
-                                {name: (*spec[:2], lambda s, l: self._same_inputs(
-                                    s, l, scenario, limits, original), spec[3])}):
+                                {name: (*spec[:2], lambda s, run_limits: self._same_inputs(
+                                    s, run_limits, scenario, limits, original), spec[3])}):
                     run_searches('all', scenario, limits)
         with self.assertRaisesRegex(ValueError, 'choose bfs, astar, hill-climbing, all'):
             run_searches('unknown', scenario, limits)

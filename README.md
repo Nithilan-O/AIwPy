@@ -20,7 +20,8 @@ then across row 7 to the base at `(7, 9)`. Eight buildable cells sit off the pat
 `(1, 2)`, `(1, 6)`, `(3, 4)`, `(4, 6)`, `(4, 8)`, `(6, 6)`, `(6, 8)`, `(8, 9)`.
 The limited sites near straights and bends offer different coverage choices.
 
-One wave contains 20 enemies, each with 100 health and speed 1 path cell/second.
+The default scope is exactly one map, one fixed path, one enemy type, and one
+wave of 20 identical enemies, each with 100 health and speed 1 path cell/second.
 The base starts with 10 health; each enemy reaching it deals 1 damage. The build
 budget is 500 credits with at most 4 towers. Timing defaults are a 0.1-second
 tick, 1-second spawn interval, and 60-second wave limit.
@@ -33,12 +34,59 @@ tick, 1-second spawn interval, and 60-second wave limit.
 
 These fixed values provide affordable short-range towers and more expensive
 alternatives with different ranges and firing rates. They are demonstration
-values; benchmark reports describe these settings rather than establish game balance.
+values; benchmark reports describe these settings rather than establish game
+balance. The GUI uses this fixed scenario. CLI budget/tower-limit overrides are
+explicit comparison variants; they do not add maps, enemy types, or waves.
 
 `domain.py` uses frozen values and `TowerId` enums. Tower configurations sort
 placements canonically, so insertion order does not affect equality or hashing.
 `Scenario.validate_state()` checks build sites, total cost, and the tower limit;
 placement construction checks IDs and coordinates without assuming a scenario.
+
+## Architecture and data flow
+
+A **state** is a complete tower configuration before the wave, not a moving enemy
+position. A **placement action** adds exactly one tower at one legal build site.
+The transition creates a new immutable state; it does not alter the previous one.
+The simulator evaluates the entire wave for a configuration from the same initial
+conditions each time.
+
+```text
+CLI / optional Tk UI / benchmark
+              |
+              v
+application.run_searches(selection, one Scenario, one SearchLimits)
+              |
+              v
+BFS / A* / Simple Hill Climbing
+  TowerConfiguration -> legal_actions -> apply_action -> new TowerConfiguration
+              |
+              v
+SearchEvaluator -> simulator.simulate -> SimulationResult -> objective_key
+              |
+              v
+SearchResult (configuration + its outcome + metrics + termination + bounded trace)
+              |
+              v
+terminal report / JSON export / UI view model and grid
+```
+
+`config.py` supplies defaults; `domain.py` validates immutable domain values;
+`actions.py` owns placement legality and transitions. `simulator.py` is the single
+wave implementation and `evaluation.py` owns the lexicographic objective.
+`search_common.py` owns result/counting/limit/measurement contracts. The three
+algorithm modules own traversal decisions only. `application.py` orchestrates
+sequential runs with the same inputs and exposes the existing trace formatters.
+`benchmark.py` records provenance and operational summaries; `ui_model.py` adapts
+shared results for `gui.py`. Front ends do not implement another simulator,
+objective, or search algorithm.
+
+For example, start with `TowerConfiguration()` (no towers). The action
+`PlacementAction((1, 2), TowerId.ARROW)` legally creates a configuration containing
+one Arrow at row 1, column 2. Adding a Cannon at `(1, 6)` creates a second state
+with both towers. Each configuration is independently stop-eligible and simulated;
+placing another tower is not assumed to improve its score. Reversing these two
+placements yields the same canonical state, so BFS/A* avoid expanding it twice.
 
 ## Placement contract
 
@@ -98,7 +146,7 @@ only when every enemy has been resolved.
 `(enemies_defeated, base_health_remaining)`, maximized lexicographically, and
 `compare_outcomes(left, right)` returning 1, 0, or -1 for better, tied, or worse.
 Escapes are reported and equal wave size minus defeats. Spending, event count,
-simulation duration, and future search/runtime metrics do not break objective ties.
+simulation duration, and search/runtime metrics do not break objective ties.
 
 ## Shared search bookkeeping
 
@@ -112,23 +160,24 @@ for expansion, before inspecting goal or terminal status. Initial, goal, and
 terminal states count; generated/evaluated-only states and duplicate removals do
 not. A `False` return means a duplicate. The cap is checked before admitting the
 next unique state, so the count never exceeds it. Exhausting the frontier or
-finding a goal on the last permitted expansion can still finish normally.
+finding no improving neighbor on the last permitted expansion can still finish normally.
 
 `SearchEvaluator` calls the existing simulator and retains the first encountered
 configuration on objective ties. Only `(defeated, remaining_base_health)` selects
 the best; cost and instrumentation never break ties. It does not count expansions
-or cache outcomes. Future algorithms must evaluate the initial configuration as
-a fallback, then check limits before expansions and subsequent evaluations.
+or cache outcomes. Each implemented algorithm evaluates the initial configuration
+as a fallback, then checks limits before expansions and subsequent evaluations.
 
 `SearchLimits` defaults to 10,000 unique expansions, no time limit, and 100 trace
 steps. Zero expansions/time is supported. `check_time_limit` and the expansion
 tracker raise `SearchLimitReached` with `TIME_LIMIT` or `MAX_EXPANDED_STATES`;
-future algorithms must catch it and return the best-so-far result with that reason.
+the algorithms catch it and return their best-so-far result with that reason.
 At a check, elapsed time equal to the deadline is expired and takes precedence
 over the expansion cap. Time checks are cooperative: a simulator call or initial
 fallback evaluation can overrun the deadline. Normal reasons are exhausted search
-space, goal reached, or no improving neighbor; each algorithm must select the
-appropriate reason rather than claim success when a resource limit stops it.
+space (BFS/A*) or no improving neighbor (hill climbing). The shared enum also
+reserves `GOAL_REACHED`, but none of the current searches uses it as a stopping
+rule. A resource-limit reason always remains explicit.
 
 `TraceStep` stores configuration, incoming placement action (`None` initially),
 depth, compact objective outcome, and optional numeric `g/h/f`. These fields do
@@ -143,8 +192,8 @@ Use a fresh `RunInstrumentation` context around initialization/fallback evaluati
 search work, simulation calls, and trace collection. Read final metrics and
 construct `SearchResult` after exiting; imports, scenario creation, and result
 formatting are outside the measurement. Elapsed time uses `perf_counter` wall
-time. Memory is the peak Python allocation count from a fresh `tracemalloc`
-session, including bookkeeping overhead; it is not process RSS or native memory.
+time. Memory is the peak size in bytes of traced Python allocations from a fresh
+`tracemalloc` session, including bookkeeping overhead; it is not process RSS or native memory.
 Tracing adds overhead and unrelated threads' allocations can affect the peak.
 
 Instrumentation owns and resets only its newly started tracer, then stops it on
@@ -154,6 +203,37 @@ external tracer during the context. Contexts are single-use; sequential runs eac
 start fresh. Runtime and memory measurements are observational and may vary even
 when gameplay outcomes and traces are deterministic.
 
+## The six comparison measures
+
+| Measure | Shared result field | Meaning / unit |
+| --- | --- | --- |
+| Enemies defeated | `simulation_result.enemies_defeated` | Enemies killed during the complete wave. |
+| Enemies escaped | `simulation_result.enemies_escaped` | Enemies reaching the base; defeated + escaped = 20 by default. |
+| Remaining base health | `simulation_result.base_health_remaining` | Health after the wave, clamped to 0–10 by default. Zero does not stop simulation early. |
+| Execution time | `elapsed_seconds` | Wall-clock seconds inside the search measurement context, including simulation and tracing overhead. |
+| Explored states | `states_explored` | Unique canonical states admitted for expansion, including initial/terminal states. Generated or evaluated-only neighbors do not count. |
+| Memory usage | `peak_memory_bytes` | Peak size of traced Python allocations, in bytes; the UI displays KiB by dividing by 1024. Not RSS or all native/process memory. |
+
+Only the first and third fields rank configurations: maximize defeats, then
+remaining health. Escapes are reported for wave accounting. Runtime, explored
+count, memory, and credits spent never break gameplay ties. Under the fixed wave,
+health is determined by escapes and leak damage, so the secondary objective may
+be redundant; the shared contract still includes it. Lower execution time or
+memory alone does not establish a better defense. Termination reason and the
+recommended configuration must be read alongside all six measures.
+
+Defaults depend on the entry point, without changing the game settings:
+
+| Entry point | Expanded-state cap | Time limit per algorithm | Trace capacity |
+| --- | --- | --- | --- |
+| Direct search / `SearchLimits()` | 10000 | None | 100 stages |
+| Normal CLI run | 10000 | None | 0 without `--trace`; 5 with it |
+| CLI benchmark | 10000 | None | Always 0; 1 repeat by default |
+| Optional desktop UI | 32 | 3 seconds | 5 stages; configurable from 0 to 20 |
+
+In all mode the allowance resets for each algorithm; it is not divided by three.
+A trace cap limits retained explanation, not expansions, runtime, or memory.
+
 ## Setup
 
 Requires Python 3.10 or newer. Run commands from this repository directory.
@@ -162,13 +242,25 @@ Setuptools is the packaging build dependency declared in `pyproject.toml`.
 The optional desktop UI additionally needs a working Tcl/Tk installation and a
 graphical desktop; the CLI and headless tests do not import Tk.
 
+On macOS/Linux:
+
+```sh
+python3 -m venv .venv
+.venv/bin/python -m pip install -e .
+```
+
+On Windows (PowerShell):
+
 ```powershell
 python -m venv .venv
 .venv\Scripts\python.exe -m pip install -e .
 ```
 
-On macOS/Linux, use `.venv/bin/python` in place of
-`.venv\Scripts\python.exe` in these commands.
+Editable installation makes the package and console commands available to that
+interpreter. No activation is required when using the explicit interpreter path.
+Installation needs setuptools (and may download build dependencies); for a
+checkout-only offline run, use the `PYTHONPATH=src` commands below. Use the same
+Python/environment for installation, testing, and running.
 
 ## Run
 
@@ -258,8 +350,9 @@ On macOS/Windows, use a Python distribution with Tcl/Tk support (the official
 python.org installers include it; enable Tcl/Tk when the installer offers that
 option). On Linux, install your distribution's Tk package for your Python, for
 example `sudo apt install python3-tk` on Debian/Ubuntu. Custom Python builds may
-need Tcl/Tk enabled when building Python. Tk is not installed via `pip install
-tkinter`. Recreate a virtual environment with the Tk-enabled interpreter if needed.
+need Tcl/Tk enabled when building Python. Tk is not installed via
+`pip install tkinter`. Recreate a virtual environment with the Tk-enabled
+interpreter if needed.
 
 From the repository on macOS/Linux:
 
@@ -482,18 +575,67 @@ command below is the project's test configuration and requires no test plugin.
 ```
 
 The smoke test imports the package, calls `main([])`, and checks its help output and
-successful return code. Optional Ruff settings live in `pyproject.toml`; Ruff is
-not required for setup, execution, or tests.
+successful return code. From an uninstalled macOS/Linux checkout, the equivalent
+full headless suite is:
+
+```sh
+PYTHONPATH=src python3 -m unittest discover -s tests -v
+```
+
+Optional Ruff settings live in `pyproject.toml`. To run the configured lint check
+with your development interpreter:
+
+```sh
+python3 -m pip install ruff
+python3 -m ruff check src tests
+```
+
+Ruff is a development tool, not a runtime/test dependency. The lint selection
+is explicitly `E4`, `E7`, `E9`, and `F` (core correctness checks), so expanded
+upstream defaults do not trigger unrelated style or exception-contract changes.
+This pass uses Ruff 0.17.4; broader opt-in rules are not a release gate. There is
+no configured type checker or mandatory formatter; do not confuse optional annotation checking
+with the standard-library test suite. The separate desktop smoke command is
+`PYTHONPATH=src python3 tests/gui_smoke.py` and requires a graphical desktop.
 
 ## Phase status
 
 The shared game contracts, deterministic simulator, three search algorithms,
 bounded teaching traces, application service, command-line integration, small
-repeatable benchmark reports, and an optional desktop UI are implemented and tested. The integration suite uses a tiny deterministic scenario
+repeatable benchmark reports, and an optional desktop UI are implemented and
+tested. The integration suite uses a tiny deterministic scenario
 to verify common results, legal recommendations, simulator consistency, outcome
 accounting, repeatability, equivalent limits, CLI output/errors, and UI-independent
 presentation. Desktop startup checks are separate from headless tests. A large
 benchmark suite remains outside this phase.
+
+## Troubleshooting and known limitations
+
+| Symptom | Action |
+| --- | --- |
+| `No module named tower_defense_optimizer` | Run from the repository with `PYTHONPATH=src`, or install with the same interpreter using `python -m pip install -e .`. PowerShell users should use the installed environment commands above. |
+| Console command not found | Use the environment's Python with `-m tower_defense_optimizer`; the command is installed inside that environment's scripts directory. |
+| A run takes too long or uses substantial memory | Lower `--max-expanded-states` and/or set `--time-limit`. Trace truncation is not a search or memory cap. |
+| Result stopped at `max_expanded_states` / `time_limit` | This is a resource-limited best-so-far result. Increase the relevant allowance if needed; no gameplay-optimality conclusion follows. |
+| Benchmark JSON cannot be written | Choose `--output` in an existing writable directory. JSON export replaces an existing file at that path, so use a new filename to preserve earlier reports. |
+| Invalid settings / exit code 2 | Read the argparse error. State/trace caps and budget are nonnegative; max towers and benchmark repeats are at least 1; time is finite and nonnegative. |
+| External memory tracing / overlapping search error | Stop the external `tracemalloc` session or overlapping run. Each search must own its fresh tracer. |
+| No trace stages / omitted stages | Check `--trace`, capacity, and zero resource limits. Retained stages are a prefix; the final recommendation may be outside it. |
+| Tk missing, display unavailable, or native Tk startup abort | Follow the optional UI setup section and use a desktop session. The CLI and headless tests work without Tk. |
+| Custom scenario fails wave-time validation | Increase `max_wave_seconds` to cover all quantized spawns plus path travel; shortening the wave does not silently count unfinished enemies as escaped. |
+
+This release intentionally has no extra maps, enemy types, additional waves,
+live gameplay, tower removal/upgrades, splash damage, random restarts, fourth
+search algorithm, or charts. The default map is not balance-tuned. BFS/A* can
+retain large frontiers; a state limit is not a hard memory cap. The hill-climbing
+variant chooses the best neighbor after a full scan and can stop on plateaus.
+Time checks are cooperative, not a preemptive deadline. Measurements depend on
+Python, hardware, runtime activity and tracing overhead; UI measurements are less
+controlled than CLI benchmark runs. Full simulator event logs are retained for
+recommendations and can also consume memory. No Python-version/OS compatibility
+matrix has been measured: validation on one host is not a cross-platform claim.
+The teaching PDF is absent from this checkout; the project uses the requested
+numbered presentation convention rather than claiming a verified transcription.
 
 ## Teaching format
 
@@ -525,6 +667,19 @@ simulation, queue/set work, and trace collection are inside shared instrumentati
 the result and teaching text are built afterwards. Finite candidate cells and
 tower count bound the search, but its frontier and visited set can consume
 substantial memory. A state-count limit is not a memory cap.
+
+A small configuration example (structural, not a timing measurement):
+
+```text
+Stage 0: empty configuration                 depth 0
+Stage 1: Arrow at (1, 2)                     depth 1
+Stage 2: Cannon at (1, 2)                    depth 1
+```
+
+Stage 2 replaces the displayed candidate because BFS is visiting another branch;
+it does not remove the Arrow from a single evolving defense. All one-tower states
+are considered before any two-tower state. Each actual CLI stage renders the full
+grid and its simulated outcome; placement depth is not a measure of defense quality.
 
 For a short classroom demonstration on the unchanged default scenario, run from
 the repository directory:
@@ -563,13 +718,19 @@ pruning removes them. In this graph every legal state has `f = target_depth`, so
 the stable insertion sequence produces the same expansion order as BFS. This is
 an intentionally simple illustration of the `g+h` pattern, not a defense heuristic.
 
+For the default four-tower target, a configuration containing Arrow at `(1, 2)`
+and Cannon at `(1, 6)` has `g=2`, `h=2`, `f=4`. The empty state has `g=0`, `h=4`,
+`f=4`; any one-tower state has `g=1`, `h=3`, `f=4`. These are search-depth scores,
+not defeated-enemy estimates. A legal one-tower state may outperform a deeper
+state in gameplay, and both remain eligible recommendations.
+
 The frontier is a min-heap retaining multiple equal-priority entries with unique
 sequence numbers, not a dictionary keyed by `f`. Best-known `g` is stored by
 canonical configuration; equal/worse rediscoveries are ignored, and stale popped
 entries are skipped before evaluation/counting/tracing. Strict improvements are
 supported by the bookkeeping, although all real routes to a configuration here
-have identical unit cost. Unlike the teaching PDF's frontier, equal `f` does not
-overwrite states, and the frontier is retained across expansions.
+have identical unit cost. Equal `f` values do not overwrite states, and the
+frontier is retained across expansions.
 
 Every unique non-stale popped state is evaluated, including the empty defense,
 stop-eligible shallow states, unreachable-depth dead ends, and target-depth goals.
@@ -604,6 +765,16 @@ objective ties choose the smallest canonical placement tuple (cell, tower ID),
 then action (cell, tower ID), independent of generation order and spending.
 Only strict gameplay improvement permits a move. Equal and worse neighbors are
 rejected. There are no sideways moves, restarts, removals, or recursive calls.
+
+For example, from an empty defense, placing a Sniper at `(3, 4)` is a legal
+one-placement neighbor. It becomes `Stage 1` only if it is the deterministically
+selected best neighbor and strictly improves the initial outcome. From there,
+placing an Arrow at `(1, 6)` is a possible next neighbor; it becomes `Stage 2`
+only under the same strict rule. If the best legal neighbor has an equal outcome,
+the current Sniper-only state is retained and search stops, even if adding two
+towers together could help. This is why a
+plateau can hide a better configuration beyond one move. These are structural
+examples, not a claim that every limited run accepts those moves.
 
 No improving neighbor (including no legal actions) returns `LOCAL_OPTIMUM`:
 this is a local optimum under one-placement moves, not a global optimum.
