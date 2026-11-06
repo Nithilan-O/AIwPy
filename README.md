@@ -6,8 +6,8 @@ deterministic tower-defense wave. Each algorithm will use the same fixed scenari
 and shared game contracts so its choices can be explained state by state.
 
 The project provides an installable package, a title/help entry point, immutable
-domain types, and a validated fixed scenario. Simulation, search algorithms, UI,
-and benchmarks are not implemented.
+domain types, a validated fixed scenario, and a deterministic simulator with a
+shared gameplay objective. Search algorithms, UI, and benchmarks are not implemented.
 
 ## Fixed scenario
 
@@ -30,8 +30,8 @@ tick, 1-second spawn interval, and 60-second wave limit.
 | `sniper` | Sniper | 225 | 4.0 | 45 | 2.0 |
 
 These fixed values provide affordable short-range towers and more expensive
-alternatives with different ranges and firing rates. Balance remains unverified
-until simulation exists; targeting and combat mechanics are deferred.
+alternatives with different ranges and firing rates. They are demonstration
+values; no balance tuning or performance benchmarking has been performed.
 
 `domain.py` uses frozen values and `TowerId` enums. Tower configurations sort
 placements canonically, so insertion order does not affect equality or hashing.
@@ -54,6 +54,49 @@ is no stop action or self-loop. `is_terminal` means no further tower placement i
 legal, whether due to budget, tower count, or occupied sites. `budget_used` reports
 spending solely for legality and explanation, never performance scoring or
 tie-breaking. Action ordering does not depend on cost.
+
+## Simulation and evaluation contract
+
+`simulate(configuration, scenario)` in `simulator.py` validates the configuration
+and runs one wave using only local mutable working data. The default wave has
+20 identical enemies. It returns a frozen `SimulationResult` with defeated and
+escaped counts, remaining base health, and a tuple of frozen `SimulationEvent`
+records for future playback. All enemies finish as defeated or escaped, including
+after base health reaches zero. Base health is clamped to `[0, initial health]`.
+
+Time is indexed by integer ticks, starting at tick 0. Enemy IDs start at 0 and
+increase with spawn order. Enemy `i` spawns at the first tick at or after
+`i * spawn_interval_seconds`. Each tick follows this order:
+
+1. Spawn due enemies at path progress 0, in enemy ID order.
+2. Move previously spawned enemies by speed times tick duration, in enemy ID
+   order. Position is linearly interpolated along the ordered path segments;
+   progress is clamped to the final cell. New spawns do not move on their spawn tick.
+3. Resolve escapes at the final path cell in enemy ID order, applying leak damage.
+   An enemy arriving at the base cannot be shot on that tick.
+4. Fire ready towers in canonical placement order. Target the living in-range
+   enemy with greatest path progress, then the lowest enemy ID. Range is inclusive
+   Euclidean distance between grid coordinates. Shots deal immediate single-target
+   damage without splash; kills are removed before the next tower fires.
+
+Towers start ready at tick 0, fire at most once per tick, and become ready again
+after `ceil(cooldown / tick_duration)` ticks. A tower with no target stays ready.
+Towers never block movement. Decimal configuration numbers are converted to exact
+rationals internally to avoid accumulated floating-point timing drift; trace
+positions and progress are exported as floats. Events record spawn, movement,
+shot, defeat, and escape, with ticks, enemy status, base health, and firing tower
+identity where applicable. Identical inputs produce identical event sequences.
+
+The wave limit must cover the last quantized spawn plus the entire path travel
+time rounded up to ticks. A shorter limit raises `ValueError` before simulation;
+unfinished or unspawned enemies are never counted as escaped. A run ends early
+only when every enemy has been resolved.
+
+`evaluation.py` exposes `objective_key(result)` as
+`(enemies_defeated, base_health_remaining)`, maximized lexicographically, and
+`compare_outcomes(left, right)` returning 1, 0, or -1 for better, tied, or worse.
+Escapes are reported and equal wave size minus defeats. Spending, event count,
+simulation duration, and future search/runtime metrics do not break objective ties.
 
 ## Setup
 
