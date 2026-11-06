@@ -1,14 +1,14 @@
 # Intelligent Tower Defense Optimizer
 
-An educational Python application that will demonstrate exactly BFS, A* Search,
-and Simple Hill Climbing choosing tower types and placements on a grid for one
-deterministic tower-defense wave. Each algorithm will use the same fixed scenario
+An educational Python application demonstrating BFS, A* Search, and Simple Hill
+Climbing choosing tower types and placements on a grid for one deterministic
+tower-defense wave. Each algorithm uses the same fixed scenario
 and shared game contracts so its choices can be explained state by state.
 
-The project provides an installable package, a title/help entry point, immutable
-domain types, a validated fixed scenario, and a deterministic simulator with a
-shared gameplay objective. BFS, teaching A*, and Simple Hill Climbing are implemented; UI and benchmarks
-remain planned.
+The project provides an installable package, an argparse CLI, a small application
+service, immutable domain types, a validated fixed scenario, and a deterministic
+simulator with a shared gameplay objective. BFS, teaching A*, and Simple Hill
+Climbing are implemented. A graphical UI and benchmarks remain deferred.
 
 ## Fixed scenario
 
@@ -169,13 +169,91 @@ On macOS/Linux, use `.venv/bin/python` in place of
 
 ## Run
 
-```powershell
-.venv\Scripts\python.exe -m tower_defense_optimizer
+From the repository on macOS/Linux, run without installing by setting
+`PYTHONPATH=src`. No arguments or `--help` prints usage without starting a search.
+
+```sh
+PYTHONPATH=src python3 -m tower_defense_optimizer --help
+PYTHONPATH=src python3 -m tower_defense_optimizer --algorithm bfs --max-expanded-states 4
+PYTHONPATH=src python3 -m tower_defense_optimizer --algorithm astar --max-expanded-states 4 --trace --trace-steps 2
+PYTHONPATH=src python3 -m tower_defense_optimizer --algorithm hill-climbing --trace --trace-steps 4
+PYTHONPATH=src python3 -m tower_defense_optimizer --algorithm all --max-expanded-states 4 --trace --trace-steps 2
+PYTHONPATH=src python3 -m tower_defense_optimizer --algorithm all --budget 300 --max-towers 2 --time-limit 1 --trace --trace-steps 1
 ```
 
-The command prints the project title, scaffold status, and a pointer to this
-README. Installation also provides the `tower-defense-optimizer` console command
-inside the virtual environment's scripts directory.
+After installing with the setup commands, use `.venv/bin/python -m tower_defense_optimizer`
+(on Windows `.venv\Scripts\python.exe -m tower_defense_optimizer`)
+or the installed `tower-defense-optimizer` command with
+the same options. For example:
+
+```powershell
+.venv\Scripts\python.exe -m tower_defense_optimizer --algorithm all --max-expanded-states 4
+```
+
+`--algorithm` accepts `bfs`, `astar`, `hill-climbing`, or `all`. All mode runs in
+numbered classroom order, sequentially, using the exact same immutable scenario
+and `SearchLimits` for each run. The expansion/time allowances reset for each
+algorithm. `--budget` and `--max-towers` override only those default scenario
+settings for every selected algorithm; coordinates remain zero-based `(row,
+column)`. Budget must be nonnegative and max towers must be at least one.
+
+`--max-expanded-states` defaults to 10000; `--time-limit` defaults to no deadline.
+Both accept zero, returning the simulator-evaluated empty fallback without
+expansion. Time must be finite and nonnegative. Checks are cooperative: a single
+simulation may overrun the deadline. A large expansion allowance can take time,
+especially with the default wave; use a small cap for classroom demonstrations.
+
+`--trace` enables teaching output. `--trace-steps N` caps the retained/output
+stages **per algorithm**, defaults to 5, and accepts zero. It does not limit the
+search itself. Without `--trace`, no stages are retained or printed. Traces show
+only the retained prefix and explicitly report omitted stages. BFS/A* stages are
+expansion order; hill-climbing stages are the accepted path and include the best
+neighbor comparison. A* stages include g/h/f. A final recommendation may be
+outside a truncated trace.
+
+Reports show each recommended tower type and cell, the original shared simulator
+outcome (defeated, escaped, remaining base health), elapsed seconds, explored
+states, peak traced Python bytes, and the typed termination reason. Formatting is
+stable; runtime and memory are observations that vary between runs. Time-limited
+recommendations can also vary. All algorithms maximize defeats first, then base
+health; coins spent and runtime/memory do not break gameplay ties. Results are
+reported independently without assigning an overall winner.
+
+Illustrative excerpt only, **not measured output** (metric values below are
+invented to demonstrate formatting; other sections and trace rows are omitted):
+
+```text
+3. Simple Hill Climbing
+Simple Hill Climbing evaluates every legal one-placement neighbor and moves to the best only on strict improvement. Equal/worse moves are rejected. It can stop at a local optimum or plateau; no global optimum is implied. Interrupted neighbor scans retain the current accepted state.
+Recommended towers (row, column):
+  Arrow [arrow] at (1, 6)
+  Sniper [sniper] at (3, 4)
+  Arrow [arrow] at (4, 6)
+Outcome: defeated=9, escaped=11, remaining base health=0
+Runtime: 1.234567 s
+Explored states: 4
+Peak memory: 3000000 bytes (traced Python allocations)
+Termination: no_improving_neighbor
+```
+
+## Application service
+
+`application.py` keeps orchestration separate from search: `run_searches` invokes
+existing algorithms, `_format_result` formats one result, and `format_report`
+builds the readable report with optional existing teaching formatters. No
+simulation, comparison, or search implementation is duplicated. It returns the
+original shared `SearchResult` values; reporting happens outside their existing
+measurement contexts. Programmatic callers can supply any validated scenario:
+
+```python
+from tower_defense_optimizer.application import run_searches, format_report
+from tower_defense_optimizer.config import DEFAULT_SCENARIO
+from tower_defense_optimizer.search_common import SearchLimits
+
+limits = SearchLimits(max_expanded_states=4, max_trace_steps=2)
+results = run_searches("all", DEFAULT_SCENARIO, limits)
+print(format_report(results, DEFAULT_SCENARIO, limits, trace=True))
+```
 
 ## Test and development tooling
 
@@ -186,24 +264,23 @@ command below is the project's test configuration and requires no test plugin.
 .venv\Scripts\python.exe -m unittest discover -s tests -v
 ```
 
-The smoke test imports the package, calls `main()`, and checks its output and
+The smoke test imports the package, calls `main([])`, and checks its help output and
 successful return code. Optional Ruff settings live in `pyproject.toml`; Ruff is
 not required for setup, execution, or tests.
 
-## Phase roadmap
+## Phase status
 
-1. **Scaffold (current):** package metadata, entry point, documentation, and smoke test.
-2. **Shared game contracts:** define the fixed grid, tower types, legal placements,
-   wave, deterministic simulation, state representation, and evaluation rules.
-3. **Search:** implement only the three algorithms below against those contracts,
-   with small helper functions for state handling, successors, and evaluation.
-4. **Teaching traces:** show grid states and tower choices with consecutive
-   `Stage 0`, `Stage 1`, ... labels, then validate deterministic behavior and
-   algorithm-specific rules. UI and benchmarks are deferred beyond this scaffold.
+The shared game contracts, deterministic simulator, three search algorithms,
+bounded teaching traces, application service, and command-line integration are
+implemented and tested. The integration suite uses a tiny deterministic scenario
+to verify common results, legal recommendations, simulator consistency, outcome
+accounting, repeatability, equivalent limits, and CLI output/errors. A graphical
+UI and a large benchmark suite are outside this phase.
 
 ## Teaching format
 
-The supplied teaching PDF, `AI Algo.pdf`, is a presentation reference: numbered
+The teaching PDF, `AI Algo.pdf`, is the requested presentation reference (not
+currently present in this checkout): numbered
 algorithm sections, short helpers before the main search routine, and row-by-row
 state displays. Preserve the headings below and use small functions adapted to
 this grid game. Do not reuse its sliding-puzzle board, puzzle heuristics, or code
@@ -235,7 +312,7 @@ For a short classroom demonstration on the unchanged default scenario, run from
 the repository directory:
 
 ```powershell
-.venv\Scripts\python.exe -c "from tower_defense_optimizer.bfs import bfs, format_teaching_trace; from tower_defense_optimizer.config import DEFAULT_SCENARIO; from tower_defense_optimizer.search_common import SearchLimits; result = bfs(DEFAULT_SCENARIO, SearchLimits(max_expanded_states=4, max_trace_steps=4)); print(format_teaching_trace(result, DEFAULT_SCENARIO))"
+.venv\Scripts\python.exe -m tower_defense_optimizer --algorithm bfs --max-expanded-states 4 --trace --trace-steps 4
 ```
 
 The formatter prints `1. BFS`, an ordered spawn-to-base path, a grid legend, and
@@ -287,7 +364,7 @@ an optimal gameplay configuration. Shared fallback, counting, cooperative time
 checks, bounded traces, and instrumentation boundaries are unchanged.
 
 ```powershell
-.venv\Scripts\python.exe -c "from tower_defense_optimizer.astar import astar, format_teaching_trace; from tower_defense_optimizer.config import DEFAULT_SCENARIO; from tower_defense_optimizer.search_common import SearchLimits; result = astar(DEFAULT_SCENARIO, SearchLimits(max_expanded_states=4, max_trace_steps=4)); print(format_teaching_trace(result, DEFAULT_SCENARIO))"
+.venv\Scripts\python.exe -m tower_defense_optimizer --algorithm astar --max-expanded-states 4 --trace --trace-steps 4
 ```
 
 The teaching formatter uses `2. A* Algorithm`, then `Stage 0`, `Stage 1`, ... in
@@ -338,5 +415,5 @@ no stages. Trace capacity retains only the configured prefix and counts omitted
 accepted-state stages; disabling/truncating the trace does not affect search.
 
 ```powershell
-.venv\Scripts\python.exe -c "from tower_defense_optimizer.hill_climbing import hill_climbing, format_teaching_trace; from tower_defense_optimizer.config import DEFAULT_SCENARIO; print(format_teaching_trace(hill_climbing(), DEFAULT_SCENARIO))"
+.venv\Scripts\python.exe -m tower_defense_optimizer --algorithm hill-climbing --trace --trace-steps 4
 ```

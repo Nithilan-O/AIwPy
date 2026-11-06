@@ -13,7 +13,7 @@ class SmokeTest(unittest.TestCase):
         self.assertEqual(tower_defense_optimizer.__name__, "tower_defense_optimizer")
         output = io.StringIO()
         with redirect_stdout(output):
-            status = main()
+            status = main([])
         self.assertEqual(status, 0)
         self.assertIn("Intelligent Tower Defense Optimizer", output.getvalue())
         self.assertIn("README.md", output.getvalue())
