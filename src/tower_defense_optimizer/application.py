@@ -1,4 +1,4 @@
-"""Small orchestration and presentation layer over the tested search contracts."""
+"""Small orchestration and presentation layer over shared search contracts."""
 
 from .astar import astar, format_teaching_trace as astar_trace
 from .bfs import bfs, format_teaching_trace as bfs_trace

@@ -237,10 +237,10 @@ A trace cap limits retained explanation, not expansions, runtime, or memory.
 ## Setup
 
 Requires Python 3.10 or newer. Run commands from this repository directory.
-There are no runtime or test dependencies outside the Python standard library.
+There are no runtime dependencies outside the Python standard library.
 Setuptools is the packaging build dependency declared in `pyproject.toml`.
 The optional desktop UI additionally needs a working Tcl/Tk installation and a
-graphical desktop; the CLI and headless tests do not import Tk.
+graphical desktop; the CLI does not import Tk.
 
 On macOS/Linux:
 
@@ -260,7 +260,7 @@ Editable installation makes the package and console commands available to that
 interpreter. No activation is required when using the explicit interpreter path.
 Installation needs setuptools (and may download build dependencies); for a
 checkout-only offline run, use the `PYTHONPATH=src` commands below. Use the same
-Python/environment for installation, testing, and running.
+Python/environment for installation and running.
 
 ## Run
 
@@ -423,20 +423,7 @@ measurement runs. Peak memory is Python allocations, not all process memory/RSS.
 Time checks remain cooperative. A limited recommendation is best-so-far, while
 hill climbing can stop at a local optimum; it does not claim global optimality.
 
-### Desktop smoke and manual checklist
-
-The normal automated suite is headless. With Tk and a graphical desktop, also run:
-
-```sh
-PYTHONPATH=src python3 tests/gui_smoke.py
-```
-
-This opens and closes a real window automatically, runs compare-all with four
-expansions and two retained trace stages, and checks worker completion, metrics,
-row selection, grid tiles, trace expansion/collapse, A* scores, resizing, validation,
-and shutdown. Restricted macOS environments may need desktop access for this
-command; a sandbox abort during native application registration is not a Python
-assertion failure.
+### Manual desktop checklist
 
 For manual verification:
 
@@ -565,48 +552,33 @@ export_json(report, "benchmark.json")
 print(format_benchmark(report))
 ```
 
-## Test and development tooling
+## Development tooling
 
-The standard-library `unittest` runner is the test tool. The explicit discovery
-command below is the project's test configuration and requires no test plugin.
-
-```powershell
-.venv\Scripts\python.exe -m unittest discover -s tests -v
-```
-
-The smoke test imports the package, calls `main([])`, and checks its help output and
-successful return code. From an uninstalled macOS/Linux checkout, the equivalent
-full headless suite is:
-
-```sh
-PYTHONPATH=src python3 -m unittest discover -s tests -v
-```
+Automated tests are not included in this checkout. Use the CLI examples above and
+the manual desktop checklist to check the application after making changes.
 
 Optional Ruff settings live in `pyproject.toml`. To run the configured lint check
 with your development interpreter:
 
 ```sh
 python3 -m pip install ruff
-python3 -m ruff check src tests
+python3 -m ruff check src
 ```
 
-Ruff is a development tool, not a runtime/test dependency. The lint selection
+Ruff is an optional development tool, not a runtime dependency. The lint selection
 is explicitly `E4`, `E7`, `E9`, and `F` (core correctness checks), so expanded
 upstream defaults do not trigger unrelated style or exception-contract changes.
 This pass uses Ruff 0.17.4; broader opt-in rules are not a release gate. There is
-no configured type checker or mandatory formatter; do not confuse optional annotation checking
-with the standard-library test suite. The separate desktop smoke command is
-`PYTHONPATH=src python3 tests/gui_smoke.py` and requires a graphical desktop.
+no configured type checker or mandatory formatter. The optional desktop interface
+requires a graphical desktop and working Tk support; see the manual desktop
+checklist above.
 
 ## Phase status
 
 The shared game contracts, deterministic simulator, three search algorithms,
 bounded teaching traces, application service, command-line integration, small
-repeatable benchmark reports, and an optional desktop UI are implemented and
-tested. The integration suite uses a tiny deterministic scenario
-to verify common results, legal recommendations, simulator consistency, outcome
-accounting, repeatability, equivalent limits, CLI output/errors, and UI-independent
-presentation. Desktop startup checks are separate from headless tests. A large
+repeatable benchmark reports, and an optional desktop UI are implemented. Desktop
+startup and interaction are documented in the manual checklist above. A large
 benchmark suite remains outside this phase.
 
 ## Troubleshooting and known limitations
@@ -621,7 +593,7 @@ benchmark suite remains outside this phase.
 | Invalid settings / exit code 2 | Read the argparse error. State/trace caps and budget are nonnegative; max towers and benchmark repeats are at least 1; time is finite and nonnegative. |
 | External memory tracing / overlapping search error | Stop the external `tracemalloc` session or overlapping run. Each search must own its fresh tracer. |
 | No trace stages / omitted stages | Check `--trace`, capacity, and zero resource limits. Retained stages are a prefix; the final recommendation may be outside it. |
-| Tk missing, display unavailable, or native Tk startup abort | Follow the optional UI setup section and use a desktop session. The CLI and headless tests work without Tk. |
+| Tk missing, display unavailable, or native Tk startup abort | Follow the optional UI setup section and use a desktop session. The CLI works without Tk. |
 | Custom scenario fails wave-time validation | Increase `max_wave_seconds` to cover all quantized spawns plus path travel; shortening the wave does not silently count unfinished enemies as escaped. |
 
 This release intentionally has no extra maps, enemy types, additional waves,
