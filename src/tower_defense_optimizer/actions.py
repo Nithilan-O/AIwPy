@@ -56,12 +56,12 @@ def apply_action(
 ) -> TowerConfiguration:
     """Validate through legal_actions and return a new canonical configuration."""
     if not isinstance(action, PlacementAction):
-        raise ValueError("action must be a PlacementAction")
+        raise ValueError("Action must be a PlacementAction.")
     if action not in legal_actions(state, scenario):
-        raise ValueError("placement action is not legal for this state and scenario")
-    return TowerConfiguration(state.placements + (
-        Placement(action.tower_type_id, action.cell_id),
-    ))
+        raise ValueError("Placement action is not legal for this state and scenario.")
+    return TowerConfiguration(
+        state.placements + (Placement(action.tower_type_id, action.cell_id),)
+    )
 
 
 def can_stop(state: TowerConfiguration, scenario: Scenario) -> bool:

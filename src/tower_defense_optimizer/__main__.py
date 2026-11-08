@@ -15,9 +15,9 @@ def _nonnegative_int(value: str) -> int:
     try:
         number = int(value)
     except ValueError as error:
-        raise argparse.ArgumentTypeError("use a nonnegative integer") from error
+        raise argparse.ArgumentTypeError("Use a nonnegative integer.") from error
     if number < 0:
-        raise argparse.ArgumentTypeError("use a nonnegative integer (zero is allowed)")
+        raise argparse.ArgumentTypeError("Use a nonnegative integer (zero is allowed).")
     return number
 
 
@@ -25,37 +25,69 @@ def _seconds(value: str) -> float:
     try:
         number = float(value)
     except ValueError as error:
-        raise argparse.ArgumentTypeError("use finite nonnegative seconds") from error
+        raise argparse.ArgumentTypeError("Use finite nonnegative seconds.") from error
     if not isfinite(number) or number < 0:
-        raise argparse.ArgumentTypeError("use finite nonnegative seconds")
+        raise argparse.ArgumentTypeError("Use finite nonnegative seconds.")
     return number
 
 
 def build_parser() -> argparse.ArgumentParser:
     """Keep argument definitions separate from execution and presentation."""
     parser = argparse.ArgumentParser(
-        description="Intelligent Tower Defense Optimizer: compare deterministic searches.",
+        description="Intelligent tower defense optimizer: compare deterministic searches.",
         epilog="See README.md for the fixed scenario and numbered teaching explanations.",
     )
-    parser.add_argument("--algorithm", choices=ALGORITHM_CHOICES,
-                        help="run one algorithm or all three in classroom order")
-    parser.add_argument("--max-expanded-states", type=_nonnegative_int, default=10_000,
-                        help="per-algorithm expansion cap (default: 10000)")
-    parser.add_argument("--time-limit", type=_seconds, metavar="SECONDS",
-                        help="per-algorithm cooperative time limit (default: none)")
-    parser.add_argument("--trace", action="store_true", help="print a short teaching trace")
-    parser.add_argument("--trace-steps", type=_nonnegative_int, default=5,
-                        help="maximum retained stages per algorithm with --trace (default: 5)")
-    parser.add_argument("--budget", type=_nonnegative_int,
-                        help="override scenario credits for every algorithm")
-    parser.add_argument("--max-towers", type=_nonnegative_int,
-                        help="override scenario tower limit (must be at least 1)")
-    parser.add_argument("--benchmark", action="store_true",
-                        help="benchmark all three in fixed order with identical settings")
-    parser.add_argument("--repeats", type=_nonnegative_int,
-                        help="benchmark repetitions, at least 1 (default: 1)")
-    parser.add_argument("--output", metavar="FILE.json",
-                        help="write benchmark JSON, including all settings and per-run values")
+    parser.add_argument(
+        "--algorithm",
+        choices=ALGORITHM_CHOICES,
+        help="Run one algorithm or all three in classroom order.",
+    )
+    parser.add_argument(
+        "--max-expanded-states",
+        type=_nonnegative_int,
+        default=10_000,
+        help="Per-algorithm expansion cap (default: 10000).",
+    )
+    parser.add_argument(
+        "--time-limit",
+        type=_seconds,
+        metavar="SECONDS",
+        help="Per-algorithm cooperative time limit (default: none).",
+    )
+    parser.add_argument(
+        "--trace", action="store_true", help="Print a short teaching trace."
+    )
+    parser.add_argument(
+        "--trace-steps",
+        type=_nonnegative_int,
+        default=5,
+        help="Maximum retained stages per algorithm with --trace (default: 5).",
+    )
+    parser.add_argument(
+        "--budget",
+        type=_nonnegative_int,
+        help="Override scenario credits for every algorithm.",
+    )
+    parser.add_argument(
+        "--max-towers",
+        type=_nonnegative_int,
+        help="Override scenario tower limit (must be at least 1).",
+    )
+    parser.add_argument(
+        "--benchmark",
+        action="store_true",
+        help="Benchmark all three in fixed order with identical settings.",
+    )
+    parser.add_argument(
+        "--repeats",
+        type=_nonnegative_int,
+        help="Benchmark repetitions, at least 1 (default: 1).",
+    )
+    parser.add_argument(
+        "--output",
+        metavar="FILE.json",
+        help="Write benchmark JSON, including all settings and per-run values.",
+    )
     return parser
 
 
@@ -65,7 +97,9 @@ def main(argv: Sequence[str] | None = None) -> int:
     args = parser.parse_args(argv)
     if args.benchmark:
         if args.algorithm not in (None, "all"):
-            parser.error("--benchmark always runs all three; omit --algorithm or use all")
+            parser.error(
+                "--benchmark always runs all three; omit --algorithm or use all"
+            )
         if args.trace:
             parser.error("--benchmark disables traces equally; omit --trace")
     elif args.repeats is not None or args.output is not None:
@@ -73,15 +107,22 @@ def main(argv: Sequence[str] | None = None) -> int:
     if args.algorithm is None and not args.benchmark:
         parser.print_help()
         return 0
-    overrides = {name: getattr(args, name) for name in ("budget", "max_towers")
-                 if getattr(args, name) is not None}
+    overrides = {
+        name: getattr(args, name)
+        for name in ("budget", "max_towers")
+        if getattr(args, name) is not None
+    }
     try:
         scenario = replace(DEFAULT_SCENARIO, **overrides)
-        limits = SearchLimits(args.max_expanded_states, args.time_limit,
-                              args.trace_steps if args.trace else 0)
+        limits = SearchLimits(
+            args.max_expanded_states,
+            args.time_limit,
+            args.trace_steps if args.trace else 0,
+        )
         if args.benchmark:
-            report = run_benchmark(scenario, limits,
-                                   repeats=1 if args.repeats is None else args.repeats)
+            report = run_benchmark(
+                scenario, limits, repeats=1 if args.repeats is None else args.repeats
+            )
             if args.output is not None:
                 export_json(report, args.output)
             print(format_benchmark(report))
@@ -90,11 +131,15 @@ def main(argv: Sequence[str] | None = None) -> int:
             return 0
         results = run_searches(args.algorithm, scenario, limits)
     except OSError as error:
-        parser.error(f"could not access benchmark source/export files: {error}. "
-                     "Choose a writable --output file in an existing directory.")
+        parser.error(
+            f"Could not access benchmark source/export files: {error}. "
+            "Choose a writable --output file in an existing directory."
+        )
     except (ValueError, RuntimeError) as error:
-        parser.error(f"{error}. Check scenario/limit settings; stop external memory tracing "
-                     "if a measurement session is already active.")
+        parser.error(
+            f"{error}. Check scenario/limit settings; stop external memory tracing "
+            "if a measurement session is already active."
+        )
     print(format_report(results, scenario, limits, trace=args.trace))
     return 0
 

@@ -19,8 +19,8 @@ DEFAULT_TRACE_LIMIT = 100
 
 class AlgorithmName(str, Enum):
     BFS = "BFS"
-    ASTAR = "A* Algorithm"
-    HILL_CLIMBING = "Simple Hill Climbing"
+    ASTAR = "A* algorithm"
+    HILL_CLIMBING = "Simple hill climbing"
 
 
 class TerminationReason(str, Enum):
@@ -33,12 +33,16 @@ class TerminationReason(str, Enum):
 
 def _nonnegative_int(name: str, value: int) -> None:
     if type(value) is not int or value < 0:
-        raise ValueError(f"{name} must be a nonnegative integer")
+        raise ValueError(
+            f"{name.replace('_', ' ').capitalize()} must be a nonnegative integer."
+        )
 
 
 def _finite_nonnegative(name: str, value: float) -> None:
     if type(value) not in (int, float) or not isfinite(value) or value < 0:
-        raise ValueError(f"{name} must be a finite nonnegative number")
+        raise ValueError(
+            f"{name.replace('_', ' ').capitalize()} must be a finite nonnegative number."
+        )
 
 
 @dataclass(frozen=True, slots=True)
@@ -66,13 +70,15 @@ class TraceStep:
 
     def __post_init__(self) -> None:
         if not isinstance(self.configuration, TowerConfiguration):
-            raise ValueError("configuration must be a TowerConfiguration")
+            raise ValueError("Configuration must be a TowerConfiguration.")
         if self.action is not None and not isinstance(self.action, PlacementAction):
-            raise ValueError("action must be a PlacementAction or None")
+            raise ValueError("Action must be a PlacementAction or None.")
         _nonnegative_int("depth", self.depth)
         outcome = tuple(self.outcome)
         if len(outcome) != 2:
-            raise ValueError("outcome must contain defeated count and remaining health")
+            raise ValueError(
+                "Outcome must contain defeated count and remaining health."
+            )
         for value in outcome:
             _nonnegative_int("outcome value", value)
         object.__setattr__(self, "outcome", outcome)
@@ -93,7 +99,7 @@ class TraceBuffer:
 
     def append(self, step: TraceStep) -> None:
         if not isinstance(step, TraceStep):
-            raise ValueError("step must be a TraceStep")
+            raise ValueError("Step must be a TraceStep.")
         if len(self._steps) < self._max_steps:
             self._steps.append(step)
         else:
@@ -123,31 +129,36 @@ class SearchResult:
 
     def __post_init__(self) -> None:
         if not isinstance(self.algorithm, AlgorithmName):
-            raise ValueError("algorithm must be an AlgorithmName")
+            raise ValueError("Algorithm must be an AlgorithmName.")
         if not isinstance(self.best_configuration, TowerConfiguration):
-            raise ValueError("best_configuration must be a TowerConfiguration")
+            raise ValueError("Best configuration must be a TowerConfiguration.")
         if not isinstance(self.simulation_result, SimulationResult):
-            raise ValueError("simulation_result must be a SimulationResult")
+            raise ValueError("Simulation result must be a SimulationResult.")
         if not isinstance(self.termination_reason, TerminationReason):
-            raise ValueError("termination_reason must be a TerminationReason")
+            raise ValueError("Termination reason must be a TerminationReason.")
         _finite_nonnegative("elapsed_seconds", self.elapsed_seconds)
-        for name in ("states_explored", "peak_memory_bytes", "trace_limit",
-                     "trace_steps_dropped"):
+        for name in (
+            "states_explored",
+            "peak_memory_bytes",
+            "trace_limit",
+            "trace_steps_dropped",
+        ):
             _nonnegative_int(name, getattr(self, name))
         trace = tuple(self.trace)
         if len(trace) > self.trace_limit:
-            raise ValueError("trace exceeds trace_limit")
+            raise ValueError("Trace exceeds its limit.")
         if any(not isinstance(step, TraceStep) for step in trace):
-            raise ValueError("trace must contain TraceStep values")
+            raise ValueError("Trace must contain TraceStep values.")
         object.__setattr__(self, "trace", trace)
 
 
 class SearchLimitReached(RuntimeError):
     def __init__(self, reason: TerminationReason) -> None:
         if not isinstance(reason, TerminationReason) or reason not in (
-            TerminationReason.MAX_EXPANDED_STATES, TerminationReason.TIME_LIMIT
+            TerminationReason.MAX_EXPANDED_STATES,
+            TerminationReason.TIME_LIMIT,
         ):
-            raise ValueError("reason must describe a resource limit")
+            raise ValueError("Reason must describe a resource limit.")
         self.reason = reason
         super().__init__(reason.value)
 
@@ -155,8 +166,10 @@ class SearchLimitReached(RuntimeError):
 def check_time_limit(limits: SearchLimits, elapsed_seconds: float) -> None:
     """Cooperative check; one in-progress operation may overrun the deadline."""
     _finite_nonnegative("elapsed_seconds", elapsed_seconds)
-    if (limits.time_limit_seconds is not None
-            and elapsed_seconds >= limits.time_limit_seconds):
+    if (
+        limits.time_limit_seconds is not None
+        and elapsed_seconds >= limits.time_limit_seconds
+    ):
         raise SearchLimitReached(TerminationReason.TIME_LIMIT)
 
 
@@ -179,7 +192,7 @@ class ExpansionTracker:
 
     def admit(self, state: TowerConfiguration, elapsed_seconds: float) -> bool:
         if not isinstance(state, TowerConfiguration):
-            raise ValueError("state must be a TowerConfiguration")
+            raise ValueError("State must be a TowerConfiguration.")
         check_time_limit(self.limits, elapsed_seconds)
         if state in self._expanded:
             return False
@@ -204,13 +217,22 @@ class SearchEvaluator:
 
     def evaluate(self, state: TowerConfiguration) -> SimulationResult:
         outcome = simulator.simulate(state, self.scenario)
-        if self.best_outcome is None or compare_outcomes(outcome, self.best_outcome) > 0:
+        if (
+            self.best_outcome is None
+            or compare_outcomes(outcome, self.best_outcome) > 0
+        ):
             self.best_configuration = state
             self.best_outcome = outcome
         return outcome
 
-    def trace_step(self, state: TowerConfiguration, action: PlacementAction | None,
-                   depth: int, outcome: SimulationResult, **scores: float) -> TraceStep:
+    def trace_step(
+        self,
+        state: TowerConfiguration,
+        action: PlacementAction | None,
+        depth: int,
+        outcome: SimulationResult,
+        **scores: float,
+    ) -> TraceStep:
         return TraceStep(state, action, depth, objective_key(outcome), **scores)
 
 
@@ -240,13 +262,13 @@ class RunInstrumentation:
 
     def __enter__(self) -> "RunInstrumentation":
         if self._start is not None:
-            raise RuntimeError("instrumentation contexts are single-use")
+            raise RuntimeError("Instrumentation contexts are single-use.")
         if not _measurement_lock.acquire(blocking=False):
-            raise RuntimeError("another search measurement is active")
+            raise RuntimeError("Another search measurement is active.")
         started = False
         try:
             if tracemalloc.is_tracing():
-                raise RuntimeError("an external tracemalloc session is already active")
+                raise RuntimeError("An external tracemalloc session is already active.")
             tracemalloc.start()
             started = True
             tracemalloc.reset_peak()

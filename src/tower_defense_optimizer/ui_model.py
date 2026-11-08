@@ -8,12 +8,18 @@ from .search_common import SearchLimits, SearchResult
 
 
 ALGORITHM_LABELS = {
-    "BFS": "bfs", "A* Algorithm": "astar", "Simple Hill Climbing": "hill-climbing",
+    "BFS": "bfs",
+    "A* algorithm": "astar",
+    "Simple hill climbing": "hill-climbing",
     "Compare all three": "all",
 }
 MEASURE_LABELS = (
-    "Enemies defeated", "Enemies escaped", "Base health left",
-    "Execution time (s)", "Explored states", "Memory (KiB)",
+    "Enemies defeated",
+    "Enemies escaped",
+    "Base health left",
+    "Execution time (s)",
+    "Explored states",
+    "Memory (KiB)",
 )
 _SYMBOLS = {TowerId.ARROW: "A", TowerId.CANNON: "C", TowerId.SNIPER: "N"}
 
@@ -44,7 +50,9 @@ def parse_limits(expanded: str, seconds: str, trace_steps: str) -> SearchLimits:
         if cap < 0:
             raise ValueError
     except ValueError as error:
-        raise ValueError("Explored-state limit must be a whole number of at least 0.") from error
+        raise ValueError(
+            "Explored-state limit must be a whole number of at least 0."
+        ) from error
     try:
         steps = int(trace_steps)
         if not 0 <= steps <= 20:
@@ -55,13 +63,19 @@ def parse_limits(expanded: str, seconds: str, trace_steps: str) -> SearchLimits:
         deadline = float(seconds) if seconds.strip() else None
         return SearchLimits(cap, deadline, steps)
     except ValueError as error:
-        raise ValueError("Time limit must be finite nonnegative seconds, or blank for none.") from error
+        raise ValueError(
+            "Time limit must be finite nonnegative seconds, or blank for none."
+        ) from error
 
 
-def grid_cells(configuration: TowerConfiguration, scenario: Scenario) -> tuple[GridCell, ...]:
+def grid_cells(
+    configuration: TowerConfiguration, scenario: Scenario
+) -> tuple[GridCell, ...]:
     """Translate a validated configuration to labelled tiles for drawing only."""
     scenario.validate_state(configuration)
-    towers = {placement.cell: placement.tower_id for placement in configuration.placements}
+    towers = {
+        placement.cell: placement.tower_id for placement in configuration.placements
+    }
     path = set(scenario.path)
     cells = []
     for row in range(scenario.rows):
@@ -83,18 +97,28 @@ def grid_cells(configuration: TowerConfiguration, scenario: Scenario) -> tuple[G
     return tuple(cells)
 
 
-def result_view(result: SearchResult, scenario: Scenario, limits: SearchLimits) -> ResultView:
+def result_view(
+    result: SearchResult, scenario: Scenario, limits: SearchLimits
+) -> ResultView:
     """Format original shared results, preserving outcome/configuration pairing."""
     outcome = result.simulation_result
-    configuration = "; ".join(
-        f"{scenario.tower(p.tower_id).name} at {p.cell}"
-        for p in result.best_configuration.placements
-    ) or "Empty configuration (no towers)"
+    configuration = (
+        "; ".join(
+            f"{scenario.tower(p.tower_id).name} at {p.cell}"
+            for p in result.best_configuration.placements
+        )
+        or "Empty configuration (no towers)"
+    )
     return ResultView(
         algorithm=result.algorithm.value,
-        measures=(str(outcome.enemies_defeated), str(outcome.enemies_escaped),
-                  str(outcome.base_health_remaining), f"{result.elapsed_seconds:.6f}",
-                  str(result.states_explored), f"{result.peak_memory_bytes / 1024:.2f}"),
+        measures=(
+            str(outcome.enemies_defeated),
+            str(outcome.enemies_escaped),
+            str(outcome.base_health_remaining),
+            f"{result.elapsed_seconds:.6f}",
+            str(result.states_explored),
+            f"{result.peak_memory_bytes / 1024:.2f}",
+        ),
         configuration=configuration,
         termination=result.termination_reason.value,
         explanation=format_report((result,), scenario, limits),

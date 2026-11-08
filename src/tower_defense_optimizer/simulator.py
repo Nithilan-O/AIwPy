@@ -37,13 +37,18 @@ class SimulationResult:
     events: tuple[SimulationEvent, ...] = ()
 
     def __post_init__(self) -> None:
-        for value in (self.enemies_defeated, self.enemies_escaped,
-                      self.base_health_remaining):
+        for value in (
+            self.enemies_defeated,
+            self.enemies_escaped,
+            self.base_health_remaining,
+        ):
             if type(value) is not int or value < 0:
-                raise ValueError("outcome counts and health must be nonnegative integers")
+                raise ValueError(
+                    "Outcome counts and health must be nonnegative integers."
+                )
         events = tuple(self.events)
         if any(not isinstance(event, SimulationEvent) for event in events):
-            raise ValueError("events must contain SimulationEvent values")
+            raise ValueError("Events must contain SimulationEvent values.")
         object.__setattr__(self, "events", events)
 
 
@@ -75,7 +80,7 @@ def _select_target(
     for enemy in enemies:
         row, column = _position(enemy.progress, path)
         distance_squared = (row - cell[0]) ** 2 + (column - cell[1]) ** 2
-        if enemy.health > 0 and distance_squared <= attack_range ** 2:
+        if enemy.health > 0 and distance_squared <= attack_range**2:
             candidates.append(enemy)
     return min(candidates, key=lambda enemy: (-enemy.progress, enemy.id), default=None)
 
@@ -99,7 +104,9 @@ def simulate(configuration: TowerConfiguration, scenario: Scenario) -> Simulatio
     )
     last_tick = spawn_ticks[-1] + ceil(path_length / step)
     if last_tick > floor(_number(scenario.max_wave_seconds) / tick_seconds):
-        raise ValueError("wave time limit cannot accommodate all spawns and path travel")
+        raise ValueError(
+            "Wave time limit cannot accommodate all spawns and path travel."
+        )
 
     towers = tuple(scenario.tower(item.tower_id) for item in configuration.placements)
     cooldowns = tuple(ceil(_number(tower.cooldown) / tick_seconds) for tower in towers)
@@ -110,17 +117,26 @@ def simulate(configuration: TowerConfiguration, scenario: Scenario) -> Simulatio
     next_enemy = defeated = escaped = 0
     base_health = scenario.base_health
 
-    def record(tick: int, kind: EventKind, enemy: _Enemy,
-               tower_index: int | None = None) -> None:
-        placement = (configuration.placements[tower_index]
-                     if tower_index is not None else None)
+    def record(
+        tick: int, kind: EventKind, enemy: _Enemy, tower_index: int | None = None
+    ) -> None:
+        placement = (
+            configuration.placements[tower_index] if tower_index is not None else None
+        )
         row, column = _position(enemy.progress, scenario.path)
-        events.append(SimulationEvent(
-            tick, kind, enemy.id, float(enemy.progress), (float(row), float(column)),
-            enemy.health, base_health,
-            placement.cell if placement else None,
-            placement.tower_id if placement else None,
-        ))
+        events.append(
+            SimulationEvent(
+                tick,
+                kind,
+                enemy.id,
+                float(enemy.progress),
+                (float(row), float(column)),
+                enemy.health,
+                base_health,
+                placement.cell if placement else None,
+                placement.tower_id if placement else None,
+            )
+        )
 
     for tick in range(last_tick + 1):
         while next_enemy < scenario.enemy_count and spawn_ticks[next_enemy] <= tick:
@@ -143,7 +159,9 @@ def simulate(configuration: TowerConfiguration, scenario: Scenario) -> Simulatio
         for index, placement in enumerate(configuration.placements):
             if tick < ready_ticks[index]:
                 continue
-            target = _select_target(active, placement.cell, ranges[index], scenario.path)
+            target = _select_target(
+                active, placement.cell, ranges[index], scenario.path
+            )
             if target is None:
                 continue
             target.health = max(0, target.health - towers[index].damage)

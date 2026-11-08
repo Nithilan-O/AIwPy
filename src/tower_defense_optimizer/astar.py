@@ -1,4 +1,4 @@
-"""2. A* Algorithm
+"""2. A* algorithm
 
 Teaching A* traversal on placement depth, not defense quality. Unit placement
 cost gives g = tower count; h = max(0, max_towers - g); f = g + h. The heuristic
@@ -21,8 +21,15 @@ from .bfs import render_configuration
 from .config import DEFAULT_SCENARIO
 from .domain import Scenario, TowerConfiguration
 from .search_common import (
-    AlgorithmName, ExpansionTracker, RunInstrumentation, SearchEvaluator,
-    SearchLimitReached, SearchLimits, SearchResult, TerminationReason, TraceBuffer,
+    AlgorithmName,
+    ExpansionTracker,
+    RunInstrumentation,
+    SearchEvaluator,
+    SearchLimitReached,
+    SearchLimits,
+    SearchResult,
+    TerminationReason,
+    TraceBuffer,
     check_time_limit,
 )
 
@@ -65,8 +72,9 @@ class _Frontier:
     def __bool__(self) -> bool:
         return bool(self._heap)
 
-    def offer(self, state: TowerConfiguration, g: int,
-              action: PlacementAction | None) -> bool:
+    def offer(
+        self, state: TowerConfiguration, g: int, action: PlacementAction | None
+    ) -> bool:
         previous = self._best_g.get(state)
         if previous is not None and g >= previous:
             return False
@@ -86,32 +94,46 @@ class _Frontier:
 def format_teaching_trace(result: SearchResult, scenario: Scenario) -> str:
     """Render a bounded expansion prefix using the established grid renderer."""
     if result.algorithm is not AlgorithmName.ASTAR:
-        raise ValueError("an A* result is required")
+        raise ValueError("An A* result is required.")
     lines = [
-        "2. A* Algorithm", "Teaching A* traversal on placement depth",
+        "2. A* algorithm",
+        "Teaching A* traversal on placement depth",
         f"Target depth: {scenario.max_towers}",
-        "g=placements so far; h=placements still needed; f=g+h (min-priority)",
-        "h does not estimate defense quality. Recommendation: best evaluated outcome only.",
+        "G = placements so far; h = placements still needed; f = g + h (min-priority).",
+        "The h value does not estimate defense quality. Recommendations show the best evaluated outcome only.",
         "S=spawn, B=base, #=path, +=free build site, .=other cell",
         "A=Arrow, C=Cannon, N=Sniper",
         "Path: " + " -> ".join(str(cell) for cell in scenario.path),
     ]
     for stage, step in enumerate(result.trace):
-        action = (f"{step.action.tower_type_id.value}@{step.action.cell_id}"
-                  if step.action else "initial configuration")
+        action = (
+            f"{step.action.tower_type_id.value}@{step.action.cell_id}"
+            if step.action
+            else "Initial configuration"
+        )
         goal = is_target_depth(step.configuration, scenario)
-        lines.extend([
-            "", f"Stage {stage}", f"Depth {step.depth}; action: {action}",
-            f"g={step.g}, h={step.h}, f={step.f}; target-depth goal: {goal}",
-            render_configuration(step.configuration, scenario),
-            f"Defeated: {step.outcome[0]}; base health: {step.outcome[1]}",
-        ])
+        lines.extend(
+            [
+                "",
+                f"Stage {stage}",
+                f"Depth {step.depth}; action: {action}",
+                f"g={step.g}, h={step.h}, f={step.f}; target-depth goal: {goal}",
+                render_configuration(step.configuration, scenario),
+                f"Defeated: {step.outcome[0]}; base health: {step.outcome[1]}",
+            ]
+        )
     if not result.trace:
-        lines.append("No retained expansion stages (trace disabled or no states expanded).")
+        lines.append(
+            "No retained expansion stages (trace disabled or no states expanded)."
+        )
     if result.trace_steps_dropped:
-        lines.append(f"Trace truncated: {result.trace_steps_dropped} expansion stages omitted.")
-    lines.append(f"Termination: {result.termination_reason.value}; "
-                 f"states explored: {result.states_explored}")
+        lines.append(
+            f"Trace truncated: {result.trace_steps_dropped} expansion stages omitted."
+        )
+    lines.append(
+        f"Termination: {result.termination_reason.value}; "
+        f"states explored: {result.states_explored}"
+    )
     return "\n".join(lines)
 
 
@@ -146,8 +168,9 @@ def astar(
                     continue
                 outcome = initial_outcome if g == 0 else evaluator.evaluate(state)
                 h = heuristic(state, scenario)
-                trace.append(evaluator.trace_step(state, action, g, outcome,
-                                                  g=g, h=h, f=g + h))
+                trace.append(
+                    evaluator.trace_step(state, action, g, outcome, g=g, h=h, f=g + h)
+                )
                 # Target-depth states have no successors under the shared tower
                 # limit. They are evaluated/traced, not used as a stopping rule.
                 check_time_limit(limits, metrics.elapsed_seconds)
@@ -158,7 +181,9 @@ def astar(
         except SearchLimitReached as stopped:
             reason = stopped.reason
 
-    assert evaluator.best_configuration is not None and evaluator.best_outcome is not None
+    assert (
+        evaluator.best_configuration is not None and evaluator.best_outcome is not None
+    )
     return SearchResult(
         algorithm=AlgorithmName.ASTAR,
         best_configuration=evaluator.best_configuration,

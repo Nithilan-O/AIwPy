@@ -11,9 +11,13 @@ from .search_common import AlgorithmName, SearchLimits, SearchResult
 # Insertion order is also classroom/report order. No search logic belongs here.
 _ALGORITHMS = {
     "bfs": (AlgorithmName.BFS, "1. BFS", bfs, bfs_trace),
-    "astar": (AlgorithmName.ASTAR, "2. A* Algorithm", astar, astar_trace),
-    "hill-climbing": (AlgorithmName.HILL_CLIMBING, "3. Simple Hill Climbing",
-                      hill_climbing, hill_trace),
+    "astar": (AlgorithmName.ASTAR, "2. A* algorithm", astar, astar_trace),
+    "hill-climbing": (
+        AlgorithmName.HILL_CLIMBING,
+        "3. Simple hill climbing",
+        hill_climbing,
+        hill_trace,
+    ),
 }
 ALGORITHM_CHOICES = (*_ALGORITHMS, "all")
 
@@ -23,12 +27,13 @@ _BEHAVIOR = {
         "perfect defense; limited runs recommend the best evaluated state only."
     ),
     AlgorithmName.ASTAR: (
-        "Teaching A* uses g=placements, h=max_towers-g, f=g+h. All legal states "
-        "have equal f here, so stable ties give BFS-like order. h does not estimate "
-        "defense quality; limited runs recommend the best evaluated state only."
+        "Teaching A* uses g=placements, h=max_towers-g, and f=g+h. Every legal "
+        "state has the same f score, so stable ties produce a BFS-like order. "
+        "The heuristic does not estimate defense quality; limited runs recommend "
+        "the best evaluated state only."
     ),
     AlgorithmName.HILL_CLIMBING: (
-        "Simple Hill Climbing evaluates every legal one-placement neighbor and "
+        "Simple hill climbing evaluates every legal one-placement neighbor and "
         "moves to the best only on strict improvement. Equal/worse moves are "
         "rejected. It can stop at a local optimum or plateau; no global optimum "
         "is implied. Interrupted neighbor scans retain the current accepted state."
@@ -37,7 +42,8 @@ _BEHAVIOR = {
 
 
 def run_searches(
-    selection: str = "all", scenario: Scenario = DEFAULT_SCENARIO,
+    selection: str = "all",
+    scenario: Scenario = DEFAULT_SCENARIO,
     limits: SearchLimits = SearchLimits(),
 ) -> tuple[SearchResult, ...]:
     """Run one or all algorithms with the exact same immutable inputs.
@@ -47,16 +53,18 @@ def run_searches(
     SearchResult objects without recomputing outcomes or comparing spending.
     """
     if selection not in ALGORITHM_CHOICES:
-        raise ValueError(f"unknown algorithm {selection!r}; choose "
-                         + ", ".join(ALGORITHM_CHOICES))
+        raise ValueError(
+            f"Unknown algorithm {selection!r}; choose " + ", ".join(ALGORITHM_CHOICES)
+        )
     selected = _ALGORITHMS.values() if selection == "all" else (_ALGORITHMS[selection],)
     return tuple(search(scenario, limits) for _, _, search, _ in selected)
 
 
 def format_trace(result: SearchResult, scenario: Scenario) -> str:
     """Public adapter for the existing algorithm-specific teaching formatters."""
-    formatter = next(spec[3] for spec in _ALGORITHMS.values()
-                     if spec[0] is result.algorithm)
+    formatter = next(
+        spec[3] for spec in _ALGORITHMS.values() if spec[0] is result.algorithm
+    )
     return formatter(result, scenario)
 
 
@@ -72,27 +80,34 @@ def _format_result(result: SearchResult, scenario: Scenario, trace: bool) -> str
         tower = scenario.tower(placement.tower_id)
         lines.append(f"  {tower.name} [{tower.id.value}] at {placement.cell}")
     outcome = result.simulation_result
-    lines.extend([
-        f"Outcome: defeated={outcome.enemies_defeated}, escaped={outcome.enemies_escaped}, "
-        f"remaining base health={outcome.base_health_remaining}",
-        f"Runtime: {result.elapsed_seconds:.6f} s",
-        f"Explored states: {result.states_explored}",
-        f"Peak memory: {result.peak_memory_bytes} bytes (traced Python allocations)",
-        f"Termination: {result.termination_reason.value}",
-    ])
+    lines.extend(
+        [
+            f"Outcome: defeated={outcome.enemies_defeated}, escaped={outcome.enemies_escaped}, "
+            f"remaining base health={outcome.base_health_remaining}",
+            f"Runtime: {result.elapsed_seconds:.6f} s",
+            f"Explored states: {result.states_explored}",
+            f"Peak memory: {result.peak_memory_bytes} bytes (traced Python allocations)",
+            f"Termination: {result.termination_reason.value}",
+        ]
+    )
     if trace:
         # Existing formatters supply the numbered heading already shown above.
-        lines.extend(["Teaching trace:", format_trace(result, scenario).partition("\n")[2]])
+        lines.extend(
+            ["Teaching trace:", format_trace(result, scenario).partition("\n")[2]]
+        )
     return "\n".join(lines)
 
 
 def format_report(
-    results: tuple[SearchResult, ...], scenario: Scenario, limits: SearchLimits,
-    *, trace: bool = False,
+    results: tuple[SearchResult, ...],
+    scenario: Scenario,
+    limits: SearchLimits,
+    *,
+    trace: bool = False,
 ) -> str:
     """Format outside search measurement; never simulate or change a result."""
     lines = [
-        "Intelligent Tower Defense Optimizer",
+        "Intelligent tower defense optimizer",
         f"Scenario: {scenario.rows}x{scenario.columns}; enemies={scenario.enemy_count}; "
         f"initial base health={scenario.base_health}; budget={scenario.budget}; "
         f"max towers={scenario.max_towers}",

@@ -67,33 +67,52 @@ def render_configuration(state: TowerConfiguration, scenario: Scenario) -> str:
     for placement in state.placements:
         grid[placement.cell[0]][placement.cell[1]] = _TOWER_SYMBOLS[placement.tower_id]
     header = "   " + " ".join(str(column) for column in range(scenario.columns))
-    return "\n".join([header] + [
-        f"{row:2} " + " ".join(cells) for row, cells in enumerate(grid)
-    ])
+    return "\n".join(
+        [header] + [f"{row:2} " + " ".join(cells) for row, cells in enumerate(grid)]
+    )
 
 
 def format_teaching_trace(result: SearchResult, scenario: Scenario) -> str:
     """Format only retained expansion steps; no further simulation or search."""
     if result.algorithm is not AlgorithmName.BFS:
-        raise ValueError("a BFS result is required")
+        raise ValueError("A BFS result is required.")
     legend = ", ".join(
         f"{_TOWER_SYMBOLS[tower_id]}={scenario.tower(tower_id).name}"
         for tower_id in TowerId
     )
-    lines = ["1. BFS", "S=spawn, B=base, #=path, +=free build site, .=other cell",
-             legend, "Path: " + " -> ".join(str(cell) for cell in scenario.path)]
+    lines = [
+        "1. BFS",
+        "S=spawn, B=base, #=path, +=free build site, .=other cell",
+        legend,
+        "Path: " + " -> ".join(str(cell) for cell in scenario.path),
+    ]
     for stage, step in enumerate(result.trace):
-        action = (f"{step.action.tower_type_id.value}@{step.action.cell_id}"
-                  if step.action else "initial configuration")
-        lines.extend(["", f"Stage {stage}", f"Depth {step.depth}; action: {action}",
-                      render_configuration(step.configuration, scenario),
-                      f"Defeated: {step.outcome[0]}; base health: {step.outcome[1]}"])
+        action = (
+            f"{step.action.tower_type_id.value}@{step.action.cell_id}"
+            if step.action
+            else "Initial configuration"
+        )
+        lines.extend(
+            [
+                "",
+                f"Stage {stage}",
+                f"Depth {step.depth}; action: {action}",
+                render_configuration(step.configuration, scenario),
+                f"Defeated: {step.outcome[0]}; base health: {step.outcome[1]}",
+            ]
+        )
     if not result.trace:
-        lines.append("No retained expansion stages (trace disabled or no states expanded).")
+        lines.append(
+            "No retained expansion stages (trace disabled or no states expanded)."
+        )
     if result.trace_steps_dropped:
-        lines.append(f"Trace truncated: {result.trace_steps_dropped} expansion stages omitted.")
-    lines.append(f"Termination: {result.termination_reason.value}; "
-                 f"states explored: {result.states_explored}")
+        lines.append(
+            f"Trace truncated: {result.trace_steps_dropped} expansion stages omitted."
+        )
+    lines.append(
+        f"Termination: {result.termination_reason.value}; "
+        f"states explored: {result.states_explored}"
+    )
     return "\n".join(lines)
 
 
@@ -127,12 +146,15 @@ def bfs(
                 # initial fallback outcome rather than simulate it a second time.
                 outcome = initial_outcome if depth == 0 else evaluator.evaluate(state)
                 trace.append(evaluator.trace_step(state, action, depth, outcome))
-                _enqueue_successors(state, depth, frontier, visited,
-                                    scenario, limits, metrics)
+                _enqueue_successors(
+                    state, depth, frontier, visited, scenario, limits, metrics
+                )
         except SearchLimitReached as stopped:
             reason = stopped.reason
 
-    assert evaluator.best_configuration is not None and evaluator.best_outcome is not None
+    assert (
+        evaluator.best_configuration is not None and evaluator.best_outcome is not None
+    )
     return SearchResult(
         algorithm=AlgorithmName.BFS,
         best_configuration=evaluator.best_configuration,
